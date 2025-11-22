@@ -295,7 +295,7 @@ def run_feedquant():
 
     # KR 캐시
     for name, code, pct, val in kr_list:
-        for iv in ("15m","1d"):
+        for iv in ("1m","15m","1d","1wk"):
             item=build_cache_item(code, name, iv)
             if item:
                 path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
@@ -305,7 +305,7 @@ def run_feedquant():
     # US 캐시
     for it in us_list:
         code=it["ticker"]; name=it["name"]
-        for iv in ("15m","1d"):
+        for iv in ("1m","15m","1d","1wk"):
             item=build_cache_item(code, name, iv)
             if item:
                 path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
