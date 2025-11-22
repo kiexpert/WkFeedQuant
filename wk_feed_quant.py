@@ -180,7 +180,7 @@ def build(interval, codes, count):
             # 성공 출력
             print(f"   ✔ rows={len(df)} "
                   f"price_set={len(price_set)} "
-                  f"energy_last={energy_last}")
+                  f"energy_last={energy_last}", flush=True)
 
             out[code]={
                 "symbol": yf_code_from(code),
@@ -199,7 +199,7 @@ def build(interval, codes, count):
             }
 
         except Exception as e:
-            print(f"   ❌ 오류 발생: {e}")
+            print(f"   ❌ 오류 발생: {e}", flush=True)
             continue
 
     return out
