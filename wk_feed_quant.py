@@ -165,13 +165,22 @@ def load_us_list(n=60):
 # ───────────────────────────────────────────
 def build(interval, codes, count):
     out={}
-    for name, code in codes:
+    total=len(codes)
+    for idx, (name, code) in enumerate(codes, start=1):
+        print(f"[{idx}/{total}] {code} 처리중…")
+
         try:
             df, cname = load_yf_ohlcv(code, interval, count)
-            if df is None: 
+            if df is None:
+                print("   ⚠️ 데이터 없음")
                 continue
 
             price_set, profile, energy, energy_last = compute_profile_energy(df)
+
+            # 성공 출력
+            print(f"   ✔ rows={len(df)} "
+                  f"price_set={len(price_set)} "
+                  f"energy_last={energy_last}")
 
             out[code]={
                 "symbol": yf_code_from(code),
@@ -180,8 +189,8 @@ def build(interval, codes, count):
                 "rows": len(df),
                 "saved_at": datetime.datetime.utcnow().isoformat(),
                 "from_cache": False,
-                "last_bar_start": datetime.datetime.utcfromtimestamp(df["ts"].iloc[-1]/1000).isoformat(),
-                "last_bar_end": datetime.datetime.utcfromtimestamp(df["ts"].iloc[-1]/1000).isoformat(),
+                "last_bar_start": datetime.datetime.utcfromtimestamp(df['ts'].iloc[-1]/1000).isoformat(),
+                "last_bar_end": datetime.datetime.utcfromtimestamp(df['ts'].iloc[-1]/1000).isoformat(),
                 "ohlcv": df.astype(float).to_dict("records"),
                 "price_set": price_set,
                 "profile": profile,
