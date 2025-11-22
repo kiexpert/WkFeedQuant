@@ -33,7 +33,7 @@ jobs:
 
       - name: Run FeedQuant
         run: |
-          rm -rf cache || true
+          rm -rf cache/*.json || true
           python wk_feed_quant.py
 
       - name: Commit & Push Cache
