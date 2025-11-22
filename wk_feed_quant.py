@@ -300,7 +300,7 @@ def run_feedquant():
         for iv in ("1m","15m","1d","1wk"):
             item=build_cache_item(code, name, iv)
             if item:
-                all_kr["{code}_{iv}"] = item
+                all_kr[f"{code}_{iv}"] = item
                 # path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
                 # _save_json(path, item)
                 _log(f"  ✔ KR 저장: {code} {iv}")
@@ -311,7 +311,7 @@ def run_feedquant():
         for iv in ("1m","15m","1d","1wk"):
             item=build_cache_item(code, name, iv)
             if item:
-                all_us["{code}_{iv}"] = item
+                all_us[f"{code}_{iv}"] = item
                 # path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
                 #_save_json(path, item)
                 _log(f"  ✔ US 저장: {code} {iv}")
