@@ -33,7 +33,7 @@ def get_top_items(limit=60,retry=0):
             if not a: continue
             name=a.text.strip();href=a.get("href","")
             if "code=" not in href: continue
-            code=f"A{href.split('code=')[-1][:6]}"
+            code=f"{href.split('code=')[-1][:6]}"
             tds=[td.text.strip().replace(",","") for td in row.select("td")]
             if len(tds)<7: continue
             try: val=float(tds[6])/100.0
@@ -160,7 +160,7 @@ def build_and_flush(interval,codes,is_kr,count,out_path):
             print(f"   ✔ 저장완료 → {out_path}")
 
         except Exception as e:
-            print(f"   ❌ 오류: {e}",flush=True)
+            print(f"   ❌ 오류 발생: {repr(e)}", flush=True)
             continue
 
     return result
