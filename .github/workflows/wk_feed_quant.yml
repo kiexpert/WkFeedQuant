@@ -4,10 +4,10 @@ on:
   push:
     paths:
       - "**/*.py"
-      - "**/*.yml"
+      # - "**/*.yml"
 
-  schedule:
-    - cron: "*/5 * * * *"   # 5분마다
+  # schedule:
+  #  - cron: "*/5 * * * *"   # 5분마다
 
   workflow_dispatch:
 
