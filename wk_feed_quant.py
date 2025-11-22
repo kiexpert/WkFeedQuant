@@ -1,322 +1,183 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os, json, time, datetime, traceback, warnings
+import numpy as np, pandas as pd, yfinance as yf
+from pathlib import Path
 
-"""
-WkFeedQuant — KR/US 시장 차트 자동캐시 생성기
-──────────────────────────────────────────────
-- 네이버: 한국 거래대금 상위 종목 자동 수집
-- 야후파이낸스: 미국 고거래량·대표종목 자동 수집
-- OHLCV 15m, 1d 수집
-- 가격평탄화 / 거래량 안전보정
-- 매물대(profile), 가격집합(price_set)
-- EA(백만단위 energy array) + 막봉보정 EA_last
-- JSON 캐시 저장
-──────────────────────────────────────────────
-"""
-
-import os, re, json, time, datetime, requests
-import pandas as pd
-import numpy as np
-from bs4 import BeautifulSoup
-import yfinance as yf
-
-# ============================================================
-# 설정
-# ============================================================
-CACHE_DIR = os.path.join(os.getcwd(), "cache")
+warnings.filterwarnings("ignore", category=FutureWarning)
+CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# ============================================================
-# 공통 유틸
-# ============================================================
-def _log(msg):
-    print(msg, flush=True)
+#────────────────────────────────────────
+# 공용 유틸
+#────────────────────────────────────────
+def now_iso(): return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+def json_write(path, obj):
+    p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = str(p)+".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
 
-def _save_json(path, obj):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
+def to_iso(x):
+    try: return pd.to_datetime(x).isoformat()
+    except: return x
 
+def json_safe(o):
+    if isinstance(o, dict):
+        return {str(k): json_safe(v) for k,v in o.items()}
+    if isinstance(o,(list,tuple,set)):
+        return [json_safe(v) for v in o]
+    return to_iso(o)
 
-# ============================================================
-# KR ─ 네이버 한국 거래대금 상위
-# ============================================================
-def get_top_kr(limit=33, retry=0):
-    url = "https://finance.naver.com/sise/sise_quant.naver"
-    headers = {
-        "User-Agent":"Mozilla/5.0",
-        "Accept-Language":"ko-KR,en;q=0.8"
-    }
-    try:
-        r = requests.get(url, headers=headers, timeout=5)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "lxml")
-        table = soup.select_one("table.type_2")
-        if not table:
-            raise ValueError("table missing")
-
-        out = []
-        for row in table.select("tr"):
-            a = row.select_one("a.tltle")
-            tds = [td.text.replace(",", "").replace("%", "").strip() for td in row.select("td")]
-            if not a or len(tds) < 7:
-                continue
-            name = a.text.strip()
-            href = a.get("href","")
-            if "code=" not in href:
-                continue
-            code = "A"+href.split("code=")[-1][:6]
-            try: pct = float(tds[2])
-            except: pct = 0.0
-            try: val = float(tds[6])/100.0
-            except: val = 0.0
-            out.append((name, code, pct, val))
-
-        out.sort(key=lambda x: x[3], reverse=True)
-        return out[:limit]
-
-    except Exception:
-        if retry < 2:
-            time.sleep(3)
-            return get_top_kr(limit, retry+1)
-        return []
-
-
-# ============================================================
-# US ─ 야후파이낸스 미국 종목 리스트
-# ============================================================
-BASE_US = [
-    "SPY","QQQ","DIA","IWM","VTI",
-    "TQQQ","SOXL","UPRO","TECL","FNGU",
-    "SQQQ","SOXS","SDOW",
-    "UVXY","VIXY","SVXY",
-    "XLF","XLE","XLK","SMH",
-    "ARKK","KWEB","LABU","LABD",
-    "TSLA","AAPL","NVDA","AMZN","MSFT","META","AMD",
-]
-
-def get_top_us(limit=30):
-    values=[]
-    for t in BASE_US:
-        try:
-            tk=yf.Ticker(t)
-            info=tk.fast_info or {}
-            full=tk.info or {}
-            price = info.get("last_price") or full.get("previousClose") or full.get("lastPrice")
-            volume= info.get("last_volume") or full.get("volume")
-            if not price or not volume:
-                continue
-            val=float(price)*float(volume)
-            name=full.get("longName") or full.get("shortName") or t
-            values.append({"ticker":t,"value_b":val/1e9,"name":name})
-        except:
-            continue
-
-    df=pd.DataFrame(values)
-    if df.empty:
-        return []
-    df=df.sort_values("value_b",ascending=False)
-    return df.head(limit).to_dict("records")
-
-
-# ============================================================
-# OHLCV 평탄화 (야후 공통)
-# ============================================================
-def wk_ultra_flatten_ohlcv(df):
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    cols=[]
-    for c in df.columns:
-        if isinstance(c, tuple):
-            cols.append("_".join([str(x) for x in c if x not in ("",None)]))
-        else:
-            cols.append(str(c))
-    df=df.copy()
-    df.columns=cols
-
+#────────────────────────────────────────
+# OHLCV 평탄화
+#────────────────────────────────────────
+def flatten(df):
+    cols=[]; df2=df.copy()
+    for c in df2.columns:
+        if isinstance(c,tuple): cols.append("_".join([str(x) for x in c if x]))
+        else: cols.append(str(c))
+    df2.columns=cols
+    need={"open","high","low","close","volume"}
     m={}
-    for c in df.columns:
+    for c in df2.columns:
         lc=c.lower()
         if "open" in lc: m["open"]=c
-        elif "high" in lc: m["high"]=c
-        elif "low" in lc: m["low"]=c
-        elif "close" in lc: m["close"]=c
-        elif "volume" in lc: m["volume"]=c
+        if "high" in lc: m["high"]=c
+        if "low" in lc: m["low"]=c
+        if "close" in lc: m["close"]=c
+        if "volume" in lc: m["volume"]=c
+    if not need<=set(m.keys()): raise KeyError("필수 OHLCV 누락")
+    ts=pd.to_datetime(df2.index,utc=True).view("int64")//1_000_000
+    o=pd.to_numeric(df2[m["open"]],errors="coerce").astype("float64")
+    h=pd.to_numeric(df2[m["high"]],errors="coerce").astype("float64")
+    l=pd.to_numeric(df2[m["low"]],errors="coerce").astype("float64")
+    c=pd.to_numeric(df2[m["close"]],errors="coerce").astype("float64")
+    v=pd.to_numeric(df2[m["volume"]],errors="coerce").astype("int64")
+    return pd.DataFrame({"ts":ts,"open":o,"high":h,"low":l,"close":c,"volume":v})
 
-    ts=pd.to_datetime(df.index,utc=True,errors="coerce")
-    ts=(ts.view("int64")//1_000_000).astype("int64")
+#────────────────────────────────────────
+# 에너지 배열
+#────────────────────────────────────────
+def energy_array(df):
+    if df is None or len(df)==0: return []
+    c=df["close"].values; v=df["volume"].values
+    ea=(c*v*1e-6).astype(float)
+    if len(ea)>=2:
+        v0=float(v[-1]); v1=float(v[-2])
+        if v1>0: ea[-1]=ea[-1] if v0>=v1 else ea[-2]*(v0/v1)
+    return [round(float(x),3) for x in ea]
 
-    def num(x): return pd.to_numeric(x,errors="coerce")
+#────────────────────────────────────────
+# 매물대 계산 (윌김님 버전)
+#────────────────────────────────────────
+def price_profile(df,dec=2):
+    pf={}; o=df["open"].values; h=df["high"].values; l=df["low"].values; c=df["close"].values; v=df["volume"].values
+    n=len(c); w_o,w_l,w_h,w_c=0.2,0.3,0.3,0.2
+    for i in range(n):
+        vv=v[i] if v[i]>0 else 10
+        for price,w in ((o[i],w_o),(l[i],w_l),(h[i],w_h),(c[i],w_c)):
+            k=float(round(price,dec)); pf[k]=pf.get(k,0)+int(round(vv*w))
+    pf=dict(sorted(pf.items()))
+    return pf
 
-    out=pd.DataFrame({
-        "ts": ts,
-        "open":num(df[m["open"]]),
-        "high":num(df[m["high"]]),
-        "low":num(df[m["low"]]),
-        "close":num(df[m["close"]]),
-        "volume":num(df[m["volume"]]).astype("int64")
-    })
-    return out
-
-
-# ============================================================
-# 거래량 안전보정
-# ============================================================
-def ensure_safe_volume(df, interval):
-    if df is None or df.empty:
-        return df
-    mins={"1m":1,"15m":15,"1d":390,"1wk":390*5}.get(interval,15)
-    fb=mins*60000
-    vv=[]
-    for x in df["volume"]:
-        try:
-            xx=float(x)
-        except:
-            xx=0
-        vv.append(fb if xx < 1 else int(xx))
-    df=df.copy()
-    df["volume"]=vv
+#────────────────────────────────────────
+# OHLCV 로딩
+#────────────────────────────────────────
+def load_ohlcv(code,interval,count):
+    p="5d" if interval.endswith("m") else "6mo"
+    raw=yf.download(code,period=p,interval=interval,auto_adjust=True,progress=False)
+    if raw is None or raw.empty: raise RuntimeError("데이터 없음")
+    raw=raw.tail(count)
+    df=flatten(raw)
     return df
 
+#────────────────────────────────────────
+# 한국/미국 거래대금 상위 종목
+#────────────────────────────────────────
+def top_us():
+    base=["TSLA","NVDA","AAPL","MSFT","AMZN","META","QQQ","SPY","IWM","TQQQ","SQQQ","SOXL","SOXS","UVXY","XLF","XLE"]
+    out=[]
+    for t in base:
+        try:
+            fi=yf.Ticker(t).fast_info
+            price=fi.get("last_price"); vol=fi.get("last_volume")
+            if not price or not vol: continue
+            out.append({"ticker":t,"value":float(price)*float(vol)})
+        except: continue
+    out=sorted(out,key=lambda x:x["value"],reverse=True)
+    return [x["ticker"] for x in out]
 
-# ============================================================
-# 매물대 / price set
-# ============================================================
-def collect_profile(df, decimals=2):
-    pf={}
-    o=df["open"].values; h=df["high"].values; l=df["low"].values
-    c=df["close"].values; v=df["volume"].values
-    w_o,w_l,w_h,w_c=0.2,0.3,0.3,0.2
-    n=len(c)
+def top_kr():
+    from bs4 import BeautifulSoup
+    import requests
+    url="https://finance.naver.com/sise/sise_quant.naver"
+    h={"User-Agent":"Mozilla/5.0"}
+    r=requests.get(url,headers=h,timeout=5)
+    soup=BeautifulSoup(r.text,"lxml")
+    table=soup.select_one("table.type_2")
+    out=[]
+    for row in table.select("tr"):
+        a=row.select_one("a.tltle")
+        tds=[td.text.strip().replace(",","").replace("%","") for td in row.select("td")]
+        if not a or len(tds)<7: continue
+        code=f"A{a['href'].split('code=')[-1][:6]}"
+        try: tv=float(tds[6])/100.0
+        except: continue
+        out.append((code,tv))
+    out=sorted(out,key=lambda x:x[1],reverse=True)
+    return [c for c,_ in out[:33]]
 
-    for i in range(n):
-        vv = v[i] if v[i]>0 else 10
-        for price,w in ((o[i],w_o),(l[i],w_l),(h[i],w_h),(c[i],w_c)):
-            k=float(round(price,decimals))
-            pf[k]=pf.get(k,0)+int(round(vv*w))
-
-    pset=set([float(round(x,decimals)) for x in list(pf.keys())])
-    pf_sorted=dict(sorted(pf.items(), key=lambda x: x[1], reverse=True))
-    return pf_sorted, pset
-
-
-# ============================================================
-# EA array (백만단위 + 막봉보정)
-# ============================================================
-def compute_energy_array(df):
-    closes=df["close"].astype(float).values
-    vols=df["volume"].astype(float).values
-    n=len(closes)
-    ea=(closes*vols)*1e-6
-    if n < 2:
-        last=float(ea[-1]) if n>0 else None
-        return ea.tolist(), last
-
-    v0=vols[-2]; v1=vols[-1]
-    if v0<=0:
-        ea_last=float(ea[-2])
-    else:
-        ea_last=float(ea[-2]*(v1/v0))
-    return ea.tolist(), ea_last
-
-
-# ============================================================
-# OHLCV 로더
-# ============================================================
-def load_ohlcv(code, interval="15m", count=77):
-    if re.match(r"A\d{6}", code):
-        yf_code=f"{code[1:]}.KS"
-    else:
-        yf_code=code
-    period="5d" if interval.endswith("m") else "77d"
-
-    raw=yf.download(yf_code,period=period,interval=interval,progress=False,auto_adjust=True)
-    if raw is None or raw.empty:
-        return None,None
-
-    raw=raw.tail(count)
-    df=wk_ultra_flatten_ohlcv(raw)
-    df=ensure_safe_volume(df, interval)
-
-    # start/end bar
-    ts=pd.to_datetime(df["ts"],unit="ms",errors="coerce").dropna()
-    if len(ts)>=2:
-        s=ts.iloc[-1]; d=s-ts.iloc[-2]
-    else:
-        s=ts.iloc[-1] if len(ts)==1 else pd.Timestamp.utcnow()
-        d=datetime.timedelta(minutes=15)
-    e=s+d
-
-    meta={
-        "symbol":yf_code,
-        "rows":len(df),
-        "last_bar_start":s.isoformat(),
-        "last_bar_end":e.isoformat()
-    }
-    return df, meta
-
-
-# ============================================================
-# 캐시 생성기
-# ============================================================
-def build_cache_item(code, name, interval, count=77):
-    df, meta=load_ohlcv(code, interval, count)
-    if df is None or df.empty:
-        return None
-
-    pf, pset = collect_profile(df)
-    ea, ea_last = compute_energy_array(df)
-
-    meta.update({
-        "name":name,
-        "profile":pf,
-        "price_set":sorted(list(pset)),
-        "energy_array":ea,
-        "energy_last":ea_last
-    })
+#────────────────────────────────────────
+# 단일 종목 처리
+#────────────────────────────────────────
+def build_one(symbol,interval,count):
+    df=load_ohlcv(symbol,interval,count)
+    pf=price_profile(df)
+    ea=energy_array(df)
     return {
+        "symbol":symbol,
+        "interval":interval,
+        "rows":len(df),
         "ohlcv":df.to_dict("records"),
-        "meta":meta
+        "profile":pf,
+        "energy":ea,
+        "saved_at":now_iso()
     }
 
+#────────────────────────────────────────
+# 메인 캐시 빌더
+#────────────────────────────────────────
+def build_feed():
+    US=top_us()
+    KR=top_kr()
+    intervals=["15m","1d"]
+    counts={"15m":77,"1d":77}
+    group={"us":US,"kr":KR}
 
-# ============================================================
-# 메인 실행
-# ============================================================
-def run_feedquant():
-    _log("▶ WkFeedQuant 시작")
+    for market,codes in group.items():
+        for iv in intervals:
+            out={}
+            for code in codes:
+                yf_code = f"{code[1:]}.KS" if market=="kr" else code
+                try:
+                    obj=build_one(yf_code,iv,counts[iv])
+                    out[yf_code]=json_safe(obj)
+                except Exception as e:
+                    out[yf_code]={"error":str(e),"symbol":yf_code,"interval":iv}
+            fn=f"{CACHE_DIR}/{market}_{iv}.json"
+            json_write(fn,out)
 
-    # KR/US 리스트
-    kr_list=get_top_kr(limit=20)
-    us_list=get_top_us(limit=20)
-
-    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
-
-    # KR 캐시
-    for name, code, pct, val in kr_list:
-        for iv in ("1m","15m","1d","1wk"):
-            item=build_cache_item(code, name, iv)
-            if item:
-                path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
-                _save_json(path, item)
-                _log(f"  ✔ KR 저장: {code} {iv}")
-
-    # US 캐시
-    for it in us_list:
-        code=it["ticker"]; name=it["name"]
-        for iv in ("1m","15m","1d","1wk"):
-            item=build_cache_item(code, name, iv)
-            if item:
-                path=os.path.join(CACHE_DIR, f"{code}_{iv}.json")
-                _save_json(path, item)
-                _log(f"  ✔ US 저장: {code} {iv}")
-
-    _log("✅ 모든 캐시 저장 완료")
-
-
-# ============================================================
-# Self Test
-# ============================================================
+#────────────────────────────────────────
+# 실행
+#────────────────────────────────────────
 if __name__=="__main__":
-    run_feedquant()
+    print("▶ WkFeedQuant: building unified OHLCV feed cache…")
+    try: build_feed()
+    except Exception as e:
+        print("❌ 오류:",e)
+        traceback.print_exc()
+        raise
+    print("✔ 완료:", now_iso())
+
