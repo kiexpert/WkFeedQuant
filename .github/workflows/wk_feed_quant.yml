@@ -1,0 +1,44 @@
+name: WkFeedQuant Cache Builder
+
+on:
+  push:
+    paths:
+      - "**/*.py"
+      - "**/*.yml"
+
+  schedule:
+    - cron: "*/5 * * * *"   # 5분마다
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          pip install yfinance pandas numpy beautifulsoup4 lxml requests
+
+      - name: Run FeedQuant
+        run: |
+          python wk_feed_quant.py
+
+      - name: Commit & Push Cache
+        run: |
+          git config user.name "WkFeedQuant Bot"
+          git config user.email "action@github.com"
+          git add cache/*.json || true
+          git commit -m "Auto cache update $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+          git push
