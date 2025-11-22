@@ -33,7 +33,7 @@ def get_top_items(limit=60,retry=0):
             if not a: continue
             name=a.text.strip();href=a.get("href","")
             if "code=" not in href: continue
-            code=f"{href.split('code=')[-1][:6]}.KQ"
+            code=f"{href.split('code=')[-1][:6]}.KS"
             tds=[td.text.strip().replace(",","") for td in row.select("td")]
             if len(tds)<7: continue
             try: val=float(tds[6])/100.0
