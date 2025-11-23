@@ -108,38 +108,27 @@ def ensure_safe_volume(df, interval):
     df["volume"] = vv
     return df
     
-def collect_profile(df, decimals = 2):
-    pf = {}
-    o = df["open"].values
-    h = df["high"].values
-    l = df["low"].values
-    c = df["close"].values
-    v = df["volume"].values
-    w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
-    n = len(c)
-    # ──────────────────────────────────────────────
-    # ① 가격 스냅 단위(step) 계산
-    #    최소단위 = 0.01, 목표는 앞 4자리 정확도만 유지하는 격자 단위
-    # ──────────────────────────────────────────────
+def collect_profile(df):
     import math
-    maxp = float(max(o.max(), h.max(), c.max()))
-    # 예: 195.95 → 10^(floor(log10(195.95)) - 3) = 10^(2-3) = 0.1
-    base = 10 ** (int(math.floor(math.log10(maxp))) - 3)
-    step = max(0.01, base)
-    # 깊토 인라인 최적화 스냅 함수
-    # price 를 step 격자로 정밀 스냅(앞 네자리 유지)
-    snap = lambda p: float(int((p + 0.5 * step) / step) * step)
-    # ──────────────────────────────────────────────
-    # ② 매물대 수집
-    # ──────────────────────────────────────────────
-    for i in range(n):
+    pf = {}
+    o = df["open"].values; h = df["high"].values
+    l = df["low"].values;  c = df["close"].values
+    v = df["volume"].values
+    # ── 1) 막봉 고가로 자동 스텝 계산
+    last_high = h[-1]
+    digits = int(math.floor(math.log10(last_high)))
+    step = max(0.01, 10 ** (digits - 3))
+    # ── 2) 가중치
+    w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
+    # ── 3) 매물대 계산
+    for i in range(len(c)):
         vv = v[i] if v[i] > 0 else 10
-
         for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
-            k = snap(price)
-            pf[k] = int(pf.get(k, 0) + round(vv * w))
-    pset = set(pf.keys())
-    pf_sorted = dict(sorted(pf.items(), key=lambda x: x[1], reverse=True))
+            slot = round(int(price + 0.5 * step) / step, 2)
+            pf[slot] = pf.get(slot, 0) + int(round(vv * w))
+    # ── 4) 정렬 + 실제가격 복원
+    pf_sorted = {slot * step: vol for slot, vol in sorted(pf.items(), key=lambda x: x[1], reverse=True)}
+    pset = set(pf_sorted.keys())
     return pf_sorted, pset
     
 def compute_energy_array(df):
