@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - "**/*.py"
-      # - "**/*.yml"
+      - "**/wk_feed_quant.yml"
 
   # schedule:
   #  - cron: "*/5 * * * *"   # 5분마다
@@ -52,17 +52,16 @@ jobs:
 
       - name: Run FeedQuant
         run: |
-          rm -rf cache/*.json || true
-          python wk_feed_quant.py
-
-      - name: Commit & Push Cache
-        run: |
           git config user.name "WkFeedQuant Bot"
           git config user.email "action@github.com"
 
           # 기존 캐시파일 Git에서 제거(없어도 에러 없음)
           git rm -f cache/*.json 2>/dev/null || true
+          rm -rf cache/*.json || true
+          python wk_feed_quant.py
 
+      - name: Commit & Push Cache
+        run: |
           # 새 캐시파일 등록
           git add cache/*.json
 
