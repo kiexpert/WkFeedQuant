@@ -27,9 +27,28 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Dependencies
-        run: |
-          pip install yfinance pandas numpy beautifulsoup4 lxml requests
+      # 3️⃣ WillKimCache — Find & Cleanup
+      - name: 🔎 WillKimCache Finder
+        id: cache
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: bash .wk-cache-finder.sh || true
+
+      # 4️⃣ Restore
+      - name: 🔁 Restore WillKimCache
+        id: restore-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.WK_CACHE_DIR }}
+          key: ${{ env.WK_CACHE_KEY }}
+          restore-keys: |
+            wk-cache-
+
+      # 5️⃣ Python deps (minimal)
+      - name: 📦 Install dependencies
+        run: pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt | tail -n 9
 
       - name: Run FeedQuant
         run: |
@@ -43,3 +62,12 @@ jobs:
           git add cache/*.json || true
           git commit -m "Auto cache update $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
           git push
+
+      # 7️⃣ Save cache snapshot
+      - name: 💾 Save WillKimCache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.WK_CACHE_DIR }}
+          key: ${{ env.WK_CACHE_NEXT_KEY }}
