@@ -117,14 +117,14 @@ def collect_profile(df):
     # ── 1) 막봉 고가로 자동 스텝 계산
     last_high = h[-1]
     digits = int(math.floor(math.log10(last_high)))
-    step = max(0.01, 10 ** (digits - 4))
+    step = max(0.01, 10 ** (digits - 3))
     # ── 2) 가중치
     w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
     # ── 3) 매물대 계산
     for i in range(len(c)):
         vv = v[i] if v[i] > 0 else 10
         for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
-            tval = price + 0.5 * step
+            tval = price + (0.5 * step)
             slot = int(tval / step) * step # round(tval - (tval % step), 2)
             pf[slot] = pf.get(slot, 0) + int(round(vv * w))
     # ── 4) 정렬 + 실제가격 복원
