@@ -198,34 +198,45 @@ def build_cache_item(code, name, interval, count=77):
         "meta": meta
     }
 
-all_kr = {}
-all_us = {}
-
-def save_item(target, code, interval, item):
-    pure = code[1:] if code.startswith("A") else code
-    if pure not in target:
-        target[pure] = {}
-    target[pure][interval] = item
-
+# ============================================================
+# 주기별 캐시 저장
+# ============================================================
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
+
     kr_list = get_top_kr(limit=20)
     us_list = get_top_us(limit=20)
+
+    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
+
+    # 주기별 딕셔너리 준비
+    buckets_kr = {"1m": {}, "15m": {}, "1d": {}, "1wk": {}}
+    buckets_us = {"1m": {}, "15m": {}, "1d": {}, "1wk": {}}
+
+    # KR
     for name, code, pct, val in kr_list:
-        for iv in ("1m","15m","1d","1wk"):
+        pure = code[1:]  # "A000660" → "000660"
+        for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                save_item(all_kr, code, iv, item)
-                _log(f"  ✔ KR 저장: {code} {iv}")
+                buckets_kr[iv][pure] = item
+                _log(f"  ✔ KR {code} {iv}")
+
+    # US
     for it in us_list:
-        code = it["ticker"]; name = it["name"]
-        for iv in ("1m","15m","1d","1wk"):
+        code = it["ticker"]
+        name = it["name"]
+        for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                save_item(all_us, code, iv, item)
-                _log(f"  ✔ US 저장: {code} {iv}")
-    _save_json(os.path.join(CACHE_DIR, "all_kr.json"), all_kr)
-    _save_json(os.path.join(CACHE_DIR, "all_us.json"), all_us)
+                buckets_us[iv][code] = item
+                _log(f"  ✔ US {code} {iv}")
+
+    # 파일 저장 (주기별)
+    for iv in ("1m", "15m", "1d", "1wk"):
+        _save_json(os.path.join(CACHE_DIR, f"all_kr_{iv}.json"), buckets_kr[iv])
+        _save_json(os.path.join(CACHE_DIR, f"all_us_{iv}.json"), buckets_us[iv])
+
     _log("✅ 모든 캐시 저장 완료")
     
 if __name__ == "__main__":
