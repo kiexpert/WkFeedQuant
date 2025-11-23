@@ -11,7 +11,7 @@ def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
     with open(path, "w", encoding = "utf-8") as f:
-        json.dump(obj, f, indent = 2, ensure_ascii = False)
+        json.dump(obj, f, indent = None, ensure_ascii = False)
 def get_top_kr(limit = 33, retry = 0):
     url = "https://finance.naver.com/sise/sise_quant.naver"
     headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,en;q=0.8"}
