@@ -59,9 +59,19 @@ jobs:
         run: |
           git config user.name "WkFeedQuant Bot"
           git config user.email "action@github.com"
-          git add cache/*.json || true
+
+          # 기존 캐시파일 Git에서 제거(없어도 에러 없음)
+          git rm -f cache/*.json 2>/dev/null || true
+
+          # 새 캐시파일 등록
+          git add cache/*.json
+
+          # 변경 없으면 commit 생략
           git commit -m "Auto cache update $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
-          git push
+
+          # 충돌 방지를 위해 pull 후 push 권장
+          git pull --rebase || true
+          git push || true
 
       # 7️⃣ Save cache snapshot
       - name: 💾 Save WillKimCache
