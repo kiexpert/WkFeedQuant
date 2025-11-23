@@ -75,36 +75,31 @@ def get_top_us(limit = 30):
         return []
     df = df.sort_values("value_b", ascending = False)
     return df.head(limit).to_dict("records")
+
 def wk_ultra_flatten_ohlcv(df):
-    if df is None or len(df) == 0:
-        return df
+    if df is None or len(df) == 0: return df
     flat = []
     for c in df.columns:
-        if isinstance(c, tuple):
-            flat.append("_".join([str(x) for x in c if x not in (None, "", " ")]))
-        else:
-            flat.append(str(c))
-    df = df.copy()
-    df.columns = flat
-    m = {}
+        if isinstance(c, tuple): flat.append("_".join([str(x) for x in c if x not in (None, "", " ")]))
+        else: flat.append(str(c))
+    df = df.copy(); df.columns = flat; m = {}
     for c in df.columns:
-        lc = c.lower()
-        if "open" in lc: m["open"] = c
-        elif "high" in lc: m["high"] = c
-        elif "low" in lc: m["low"] = c
-        elif "close" in lc: m["close"] = c
-        elif "volume" in lc: m["volume"] = c
+        m[c.lower()] = c
     ts = pd.to_datetime(df.index, utc = True, errors = "coerce")
     ts = (ts.view("int64") // 1_000_000).astype("int64")
     def num(x): return pd.to_numeric(x, errors = "coerce")
-    return pd.DataFrame({
-        "ts": ts,
-        "open": num(df[m["open"]]).astype("float64"),
-        "high": num(df[m["high"]]).astype("float64"),
-        "low": num(df[m["low"]]).astype("float64"),
-        "close": num(df[m["close"]]).astype("float64"),
-        "volume": num(df[m["volume"]]).astype("int64")
-    })
+    o = num(df[m["open"]]).astype("float64")
+    h = num(df[m["high"]]).astype("float64")
+    l = num(df[m["low"]]).astype("float64")
+    c = num(df[m["close"]]).astype("float64")
+    v = num(df[m["volume"]]).astype("int64")
+
+    #── 가격 라운딩(미국장 기준 0.01) — 울트라 평탄화 적용 지점
+    round2 = lambda x: x.round(2)
+    o, h, l, c = map(round2, (o, h, l, c))
+
+    return pd.DataFrame({"ts": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
+    
 def ensure_safe_volume(df, interval):
     if df is None or df.empty:
         return df
