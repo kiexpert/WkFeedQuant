@@ -171,10 +171,19 @@ def load_ohlcv(code, interval = "15m", count = 77):
         "last_bar_start": s.isoformat(),
         "last_bar_end": e.isoformat()
     }
-def build_cache_item(code, name, interval, count = 77):
+
+def build_cache_item(code, name, interval, count=77):
     df, meta = load_ohlcv(code, interval, count)
     if df is None or df.empty:
         return None
+    ohlcv = {
+        "ts": df["ts"].tolist(),
+        "open": df["open"].tolist(),
+        "high": df["high"].tolist(),
+        "low": df["low"].tolist(),
+        "close": df["close"].tolist(),
+        "volume": df["volume"].tolist()
+    }
     pf, pset = collect_profile(df)
     ea, ea_last = compute_energy_array(df)
     meta.update({
@@ -184,32 +193,40 @@ def build_cache_item(code, name, interval, count = 77):
         "energy_array": ea,
         "energy_last": ea_last
     })
-    return {"ohlcv": df.to_dict("records"), "meta": meta}
-intervals = ("1m", "15m", "1d", "1wk")
-all_kr = {iv: {} for iv in intervals}
-all_us = {iv: {} for iv in intervals}
+    return {
+        "ohlcv": ohlcv,
+        "meta": meta
+    }
+
+all_kr = {}
+all_us = {}
+
+def save_item(target, code, interval, item):
+    pure = code[1:] if code.startswith("A") else code
+    if pure not in target:
+        target[pure] = {}
+    target[pure][interval] = item
+
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
-    kr_list = get_top_kr(limit = 20)
-    us_list = get_top_us(limit = 20)
-    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
+    kr_list = get_top_kr(limit=20)
+    us_list = get_top_us(limit=20)
     for name, code, pct, val in kr_list:
-        for iv in intervals:
+        for iv in ("1m","15m","1d","1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                all_kr[iv][f"{code}_{iv}"] = item
-                _log(f"  ✔ KR {code} {iv}")
+                save_item(all_kr, code, iv, item)
+                _log(f"  ✔ KR 저장: {code} {iv}")
     for it in us_list:
-        code = it["ticker"]
-        name = it["name"]
-        for iv in intervals:
+        code = it["ticker"]; name = it["name"]
+        for iv in ("1m","15m","1d","1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                all_us[iv][f"{code}_{iv}"] = item
-                _log(f"  ✔ US {code} {iv}")
-    for iv in intervals:
-        _save_json(os.path.join(CACHE_DIR, f"all_kr_{iv}.json"), all_kr[iv])
-        _save_json(os.path.join(CACHE_DIR, f"all_us_{iv}.json"), all_us[iv])
+                save_item(all_us, code, iv, item)
+                _log(f"  ✔ US 저장: {code} {iv}")
+    _save_json(os.path.join(CACHE_DIR, "all_kr.json"), all_kr)
+    _save_json(os.path.join(CACHE_DIR, "all_us.json"), all_us)
     _log("✅ 모든 캐시 저장 완료")
+    
 if __name__ == "__main__":
     run_feedquant()
