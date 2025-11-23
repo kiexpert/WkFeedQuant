@@ -196,7 +196,7 @@ def build_cache_item(code, name, interval, count=77):
         "price_set": sorted(list(pset)),
         "energies": ea,
         # "energy_last": ea_last, # 에너지 배열 마지막값~
-        "ohlcv": df.to_dict("records"),
+        "ohlcv": df.to_dict("list"),
     }
 
 # ============================================================
