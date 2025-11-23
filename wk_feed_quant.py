@@ -176,26 +176,27 @@ def build_cache_item(code, name, interval, count=77):
     df, meta = load_ohlcv(code, interval, count)
     if df is None or df.empty:
         return None
-    ohlcv = {
-        "ts": df["ts"].tolist(),
-        "open": df["open"].tolist(),
-        "high": df["high"].tolist(),
-        "low": df["low"].tolist(),
-        "close": df["close"].tolist(),
-        "volume": df["volume"].tolist()
-    }
     pf, pset = collect_profile(df)
     ea, ea_last = compute_energy_array(df)
-    meta.update({
+    symbol = meta.get("symbol")
+    rows = meta.get("rows")
+    lbs = meta.get("last_bar_start")
+    lbe = meta.get("last_bar_end")
+    # 저장 시간
+    saved = datetime.datetime.utcnow().isoformat()
+    return {
         "name": name,
+        "symbol": symbol,
+        "interval": interval,
+        "rows": rows,
+        "saved_at": saved,
+        "last_bar_start": lbs,
+        "last_bar_end": lbe,
         "profile": pf,
         "price_set": sorted(list(pset)),
-        "energy_array": ea,
-        "energy_last": ea_last
-    })
-    return {
-        "ohlcv": ohlcv,
-        "meta": meta
+        "energies": ea,
+        # "energy_last": ea_last, # 에너지 배열 마지막값~
+        "ohlcv": df.to_dict("records"),
     }
 
 # ============================================================
