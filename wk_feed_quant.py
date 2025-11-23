@@ -155,19 +155,16 @@ def collect_profile(df, decimals=2):
 # EA array
 # ──────────────────────────────────────────
 def compute_energy_array(df):
-    closes=df["close"].astype(float).values
-    vols=df["volume"].astype(float).values
-    ea=(closes*vols)*1e-6
-    n=len(ea)
-    if n<2:
-        last=float(ea[-1]) if n>0 else None
-        return ea.tolist(), last
-
-    v0=vols[-2]; v1=vols[-1]
-    if v0<=0: ea_last=float(ea[-2])
-    else: ea_last=float(ea[-2]*(v1/v0))
-    ea=list(ea); ea[-1]=ea_last
-    return ea,ea_last
+    c=df["close"].values.astype(float); v=df["volume"].values.astype(float); n=len(c)
+    ea=np.round(c*v*1e-6,3)
+    if n<2: return ea.tolist(),(float(ea[-1]) if n else None)
+    p0,p1,v0,v1=c[-1],c[-2],v[-1],v[-2]
+    if v0>=v1: last=p0*v0
+    else:
+        r=v0/v1
+        last=(p0*v0)*r+(p1*v1)*(1-r)
+    last=round(last*1e-6,3); ea[-1]=last
+    return ea.tolist(),last
 
 # ──────────────────────────────────────────
 # OHLCV 로더
