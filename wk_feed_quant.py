@@ -121,6 +121,7 @@ def collect_profile(df, decimals = 2):
     # ① 가격 스냅 단위(step) 계산
     #    최소단위 = 0.01, 목표는 앞 4자리 정확도만 유지하는 격자 단위
     # ──────────────────────────────────────────────
+    import math
     maxp = float(max(o.max(), h.max(), c.max()))
     # 예: 195.95 → 10^(floor(log10(195.95)) - 3) = 10^(2-3) = 0.1
     base = 10 ** (int(math.floor(math.log10(maxp))) - 3)
