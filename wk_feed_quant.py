@@ -196,13 +196,51 @@ def build_cache_item(code, name, interval, count=77):
     }
 
 # ============================================================
+# 지표 강제 포함용 세트 (모두 미국 취급)
+# ============================================================
+FORCED_US = {
+    # 미국 본체
+    "^NDX":"NASDAQ 100 지수","^DJI":"다우 지수","^GSPC":"S&P500 지수","^VIX":"CBOE VIX",
+    # 변동성
+    "UVXY":"Ultra VIX Short-Term 2x","VIXY":"VIX Short-Term","VIXM":"VIX Mid-Term","SVXY":"Short VIX Inverse",
+    # 3배 레버리지
+    "TQQQ":"NASDAQ 3x","UPRO":"S&P500 3x","SOXL":"Semiconductor 3x","SPXL":"S&P500 3x alt",
+    "FNGU":"FANG+ 3x","TECL":"Tech 3x",
+    # 3배 인버스
+    "SQQQ":"NASDAQ 3x Inv","SOXS":"Semiconductor 3x Inv","SPXS":"S&P500 3x Inv","SDOW":"DOW 3x Inv",
+    "LABD":"Bio 3x Inv","TZA":"Russell2000 3x Inv",
+    # 보유·특수
+    "BITX":"Bitcoin 2x","CRCL":"Circle","MSTU":"MSTR Target 2x","MSTX":"MSTR 2x Long",
+    "NVDL":"NVIDIA 2x","PLTU":"Palantir 2x","PONY":"Pony AI","QCOM":"Qualcomm","QUBT":"QUBT","TSLL":"Tesla 2x",
+    # 선물·환율
+    "CL=F":"WTI Oil","BZ=F":"Brent Oil","GC=F":"Gold","SI=F":"Silver","HG=F":"Copper",
+    "ES=F":"S&P500 Futures","NQ=F":"NASDAQ Futures","YM=F":"DOW Futures","RTY=F":"R2000 Futures",
+    "DX-Y.NYB":"Dollar Index","EURUSD=X":"EUR/USD","JPY=X":"USD/JPY","USDKRW=X":"USD/KRW",
+    # 글로벌 지수
+    "^N225":"Nikkei225","^HSI":"HSI","^FCHI":"CAC40","^GDAXI":"DAX",
+    # 국내 지수(미국 티커로 취급)
+    "^KS11":"KOSPI","^KQ11":"KOSDAQ"
+}
+
+# ============================================================
 # 주기별 캐시 저장
 # ============================================================
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
 
-    kr_list = get_top_kr(limit=20)
-    us_list = get_top_us(limit=20)
+    # 기존
+    kr_list = get_top_kr(limit=33)
+    us_list = get_top_us(limit=33)
+    
+    # -----------------------------------------
+    # ★ 미국 지표 강제 포함: (ticker, name) 형태로 us_list 확장
+    # -----------------------------------------
+    forced = [(FORCED_US[k], k) for k in FORCED_US]  # (name, ticker)
+    # 기존 us_list 형식과 맞추기 위해 dict 생성
+    merged = {it["ticker"]: it for it in us_list}
+    for name, code in forced:
+        merged.setdefault(code, {"ticker":code, "name":name})
+    us_list = list(merged.values())
 
     _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
 
