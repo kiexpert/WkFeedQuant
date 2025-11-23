@@ -125,7 +125,7 @@ def collect_profile(df):
         vv = v[i] if v[i] > 0 else 10
         for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
             tval = price + (0.5 * step)
-            slot = int(tval / step) * step # round(tval - (tval % step), 2)
+            slot = f"{tval - (tval % step):.2f}" # int(tval / step) * step # round(tval - (tval % step), 2)
             pf[slot] = pf.get(slot, 0) + int(round(vv * w))
     # ── 4) 정렬 + 실제가격 복원
     pf_sorted = {slot * step: vol for slot, vol in sorted(pf.items(), key=lambda x: x[1], reverse=True)}
