@@ -123,41 +123,39 @@ def get_top_us(limit=30):
 # OHLCV 평탄화 (야후 공통)
 # ============================================================
 def wk_ultra_flatten_ohlcv(df):
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    cols=[]
+    if df is None or len(df) == 0: return df
+    flat = []
     for c in df.columns:
         if isinstance(c, tuple):
-            cols.append("_".join([str(x) for x in c if x not in ("",None)]))
+            flat.append("_".join([str(x) for x in c if x not in (None, "", " ")]))
         else:
-            cols.append(str(c))
-    df=df.copy()
-    df.columns=cols
-
-    m={}
+            flat.append(str(c))
+    df = df.copy(); df.columns = flat
+    m = {}
     for c in df.columns:
-        lc=c.lower()
-        if "open" in lc: m["open"]=c
-        elif "high" in lc: m["high"]=c
-        elif "low" in lc: m["low"]=c
-        elif "close" in lc: m["close"]=c
-        elif "volume" in lc: m["volume"]=c
-
-    ts=pd.to_datetime(df.index,utc=True,errors="coerce")
-    ts=(ts.view("int64")//1_000_000).astype("int64")
-
-    def num(x): return pd.to_numeric(x,errors="coerce")
-
-    out=pd.DataFrame({
-        "ts": ts,
-        "open":num(df[m["open"]]),
-        "high":num(df[m["high"]]),
-        "low":num(df[m["low"]]),
-        "close":num(df[m["close"]]),
-        "volume":num(df[m["volume"]]).astype("int64")
-    })
-    return out
+        lc = c.lower()
+        if "open" in lc: m["open"] = c
+        elif "high" in lc: m["high"] = c
+        elif "low" in lc: m["low"] = c
+        elif "close" in lc: m["close"] = c
+        elif "volume" in lc: m["volume"] = c
+    for k in ("open", "high", "low", "close", "volume"):
+        if k not in m: raise KeyError(f"[평탄화] '{k}' 없음")
+    try:
+        ts = pd.to_datetime(df.index, utc = True, errors = "coerce")
+        ts = (ts.view("int64") // 1_000_000).astype("int64")
+    except:
+        raise ValueError("[평탄화] ts 변환 실패")
+    def num(x):
+        if isinstance(x, (pd.Series, np.ndarray, list, tuple)):
+            return pd.to_numeric(x, errors = "coerce")
+        return float(x)
+    o = num(df[m["open"]]).astype("float64")
+    h = num(df[m["high"]]).astype("float64")
+    l = num(df[m["low"]]).astype("float64")
+    c = num(df[m["close"]]).astype("float64")
+    v = pd.to_numeric(df[m["volume"]], errors = "coerce").astype("int64")
+    return pd.DataFrame({"ts": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
 
 
 # ============================================================
