@@ -76,28 +76,22 @@ def get_top_us(limit = 30):
     df = df.sort_values("value_b", ascending = False)
     return df.head(limit).to_dict("records")
 
+_WK_OHLC_TOK = re.compile(r'(open|high|low|close|volume)', re.I)
+
 def wk_ultra_flatten_ohlcv(df):
     if df is None or len(df) == 0: return df
-    flat = []
-    for c in df.columns:
-        if isinstance(c, tuple): flat.append("_".join([str(x) for x in c if x not in (None, "", " ")]))
-        else: flat.append(str(c))
+    flat = ["_".join([str(x) for x in c if x not in (None,""," ")]) if isinstance(c,tuple) else str(c) for c in df.columns]
     df = df.copy(); df.columns = flat; m = {}
     for c in df.columns:
-        m[c.lower()] = c
-    ts = pd.to_datetime(df.index, utc = True, errors = "coerce")
-    ts = (ts.view("int64") // 1_000_000).astype("int64")
-    def num(x): return pd.to_numeric(x, errors = "coerce")
-    o = num(df[m["open"]]).astype("float64")
-    h = num(df[m["high"]]).astype("float64")
-    l = num(df[m["low"]]).astype("float64")
-    c = num(df[m["close"]]).astype("float64")
+        k = _WK_OHLC_TOK.search(c.lower())
+        if k: m[k.group(1).lower()] = c
+    if len(m) < 5: raise KeyError("OHLCV columns not detected")
+    ts = pd.to_datetime(df.index, utc = True, errors = "coerce"); ts = (ts.view("int64") // 1_000_000).astype("int64")
+    num = lambda x: pd.to_numeric(x, errors = "coerce")
+    o = num(df[m["open"]]).astype("float64"); h = num(df[m["high"]]).astype("float64")
+    l = num(df[m["low"]]).astype("float64"); c = num(df[m["close"]]).astype("float64")
     v = num(df[m["volume"]]).astype("int64")
-
-    #── 가격 라운딩(미국장 기준 0.01) — 울트라 평탄화 적용 지점
-    round2 = lambda x: x.round(2)
-    o, h, l, c = map(round2, (o, h, l, c))
-
+    round2 = lambda x: x.round(2); o, h, l, c = map(round2, (o, h, l, c))
     return pd.DataFrame({"ts": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
     
 def ensure_safe_volume(df, interval):
