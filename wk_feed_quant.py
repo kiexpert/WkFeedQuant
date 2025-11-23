@@ -102,7 +102,7 @@ def wk_ultra_flatten_ohlcv(df):
         "open": num(df[m["open"]]).astype("float64"),
         "high": num(df[m["high"]]).astype("float64"),
         "low": num(df[m["low"]]).astype("float64"),
-        "close": num(df[m["close"]]).astype("float64"],
+        "close": num(df[m["close"]]).astype("float64"),
         "volume": num(df[m["volume"]]).astype("int64")
     })
 def ensure_safe_volume(df, interval):
