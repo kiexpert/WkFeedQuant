@@ -137,7 +137,7 @@ def collect_profile(df, decimals = 2):
 
         for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
             k = snap(price)
-            pf[k] = pf.get(k, 0) + int(round(vv * w))
+            pf[k] = int(pf.get(k, 0) + round(vv * w))
     pset = set(pf.keys())
     pf_sorted = dict(sorted(pf.items(), key=lambda x: x[1], reverse=True))
     return pf_sorted, pset
