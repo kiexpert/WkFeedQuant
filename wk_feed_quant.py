@@ -277,6 +277,7 @@ def run_feedquant():
     for name, code, pct, val in kr_list:
         pure = code[1:]  # "A000660" → "000660"
         for iv in ("1m", "15m", "1d", "1wk"):
+            print(f"build cache item {pure}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
                 if not buckets_kr[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
