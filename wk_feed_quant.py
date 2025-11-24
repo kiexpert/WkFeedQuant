@@ -136,25 +136,48 @@ def ensure_safe_volume(df, interval):
 def collect_profile(df):
     import math
     pf = {}
+    if df is None or len(df)==0: return pf,set()
+
     o = df["open"].values; h = df["high"].values
     l = df["low"].values;  c = df["close"].values
     v = df["volume"].values
-    # ── 1) 막봉 고가로 자동 스텝 계산
-    last_high = h[-1]
-    digits = int(math.floor(math.log10(last_high)))
-    step = max(0.01, 10 ** (digits - 3))
-    # ── 2) 가중치
-    w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
-    # ── 3) 매물대 계산
+
+    # 1) 확실하게 정상 base 가격 찾기 (high → low → close → open 순)
+    base = None
+    for arr in (h,l,c,o):
+        for x in arr[::-1]:
+            try: fx = float(x)
+            except: continue
+            if math.isfinite(fx) and fx > 0:
+                base = fx
+                break
+        if base is not None: break
+
+    # 정상 가격 하나도 없으면 빈 매물대 리턴
+    if base is None:
+        return pf,set()
+
+    # 2) 스텝 계산
+    digits = int(math.floor(math.log10(base)))
+    step = max(0.01,10**(digits-4))
+
+    # 3) 가중치
+    w_o,w_l,w_h,w_c = 0.2,0.3,0.3,0.2
+
+    # 4) 매물대 계산
     for i in range(len(c)):
-        vv = v[i] if v[i] > 0 else 10
-        for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
-            slot = int((price + (0.5 * step)) / step)
-            pf[slot] = pf.get(slot, 0) + int(round(vv * w))
-    # ── 4) 정렬 + 실제가격 복원
-    pf_sorted = {round(slot * step, 2): vol for slot, vol in sorted(pf.items(), key=lambda x: x[1], reverse=True)}
-    pset = set(pf_sorted.keys())
-    return pf_sorted, pset
+        try: vol = float(v[i])
+        except: vol = 0.0
+        if (not math.isfinite(vol)) or vol<=0: vol = 1.0
+
+        for price,w in ((o[i],w_o),(l[i],w_l),(h[i],w_h),(c[i],w_c)):
+            try: p = float(price)
+            except: continue
+            if not math.isfinite(p): continue
+            key = int(p//step)
+            pf[key] = pf.get(key,0.0) + vol*w
+
+    return pf,set(pf.keys())
     
 def compute_energy_array(df):
     closes = df["close"].astype(float).values
@@ -277,7 +300,7 @@ def run_feedquant():
     for name, code, pct, val in kr_list:
         pure = code[1:]  # "A000660" → "000660"
         for iv in ("1m", "15m", "1d", "1wk"):
-            print(f"build cache item {pure}", flush=True)
+            print(f"build cache item {pure} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
                 if not buckets_kr[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
@@ -289,6 +312,7 @@ def run_feedquant():
         code = it["ticker"]
         name = it["name"]
         for iv in ("1m", "15m", "1d", "1wk"):
+            print(f"build cache item {pure} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
                 if not buckets_us[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
