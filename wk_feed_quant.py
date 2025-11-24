@@ -254,7 +254,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_kr[iv]: _log(json.dumps(item, indent=None))
+                if not buckets_kr[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
@@ -265,7 +265,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_us[iv]: _log(json.dumps(item, indent=None))
+                if not buckets_us[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
