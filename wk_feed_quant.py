@@ -80,21 +80,17 @@ _WK_OHLC_TOK = re.compile(r'(open|high|low|close|volume)', re.I)
 
 def wk_ultra_flatten_ohlcv(df):
     if df is None or len(df) == 0: return df
-
     # 1) 플랫 컬럼명
     flat = ["_".join([str(x) for x in c if x not in (None,""," ")]) if isinstance(c,tuple) else str(c) for c in df.columns]
     df = df.copy(); df.columns = flat; m = {}
-
     # 2) OHLCV 매핑
     for c in df.columns:
         k = _WK_OHLC_TOK.search(c.lower())
         if k: m[k.group(1).lower()] = c
     if len(m) < 5: raise KeyError("OHLCV columns not detected")
-
     # 3) 타임스탬프 변환
     ts = pd.to_datetime(df.index, utc=True, errors="coerce")
     ts = (ts.view("int64") // 1_000_000).astype("int64")
-
     # 4) 숫자 변환
     num = lambda x: pd.to_numeric(x, errors="coerce")
     o = num(df[m["open"]]).astype("float64")
@@ -102,34 +98,37 @@ def wk_ultra_flatten_ohlcv(df):
     l = num(df[m["low"]]).astype("float64")
     c = num(df[m["close"]]).astype("float64")
     v = num(df[m["volume"]]).astype("int64")
-
     # 5) 길이 불일치 보정
     ml = max(len(o), len(h), len(l), len(c), len(v))
     reidx = lambda x: x.reindex(range(ml))
     o, h, l, c, v = map(reidx, (o, h, l, c, v))
-
     # 6) high 전체 NaN 방어 (low → close → open 순 fallback)
     if h.isna().all():
         if not l.isna().all(): h = l.copy()
         elif not c.isna().all(): h = c.copy()
         elif not o.isna().all(): h = o.copy()
-
     # 7) 소수점 정리
     r2 = lambda x: x.round(2)
     o, h, l, c = map(r2, (o, h, l, c))
-
     return pd.DataFrame({"ts": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
     
 def ensure_safe_volume(df, interval):
-    if df is None or df.empty:
-        return df
-    mins = {"1m": 1, "15m": 15, "1d": 390, "1wk": 390 * 5}.get(interval, 15)
+    import math
+    if df is None or df.empty: return df
+    mins = {"1m":1,"15m":15,"1d":390,"1wk":390*5}.get(interval,15)
     fb = mins * 60000
     vv = []
     for x in df["volume"]:
         try: xx = float(x)
-        except: xx = 0
-        vv.append(fb if xx < 1 else int(xx))
+        except: xx = 0.0
+        # NaN, 음수, 0 → fallback
+        if (not math.isfinite(xx)) or xx <= 0:
+            vv.append(fb)
+            continue
+        iv = int(xx)
+        if iv < 1: iv = fb
+        vv.append(iv)
+        fb = iv
     df = df.copy()
     df["volume"] = vv
     return df
