@@ -298,7 +298,7 @@ def run_feedquant():
 
     # KR
     for name, code, pct, val in kr_list:
-        code = pure = code[1:]  # "A000660" → "000660"
+        pure = code[1:]  # "A000660" → "000660"
         for iv in ("1m", "15m", "1d", "1wk"):
             print(f"build cache item {pure} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
