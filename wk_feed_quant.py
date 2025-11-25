@@ -290,7 +290,7 @@ def run_feedquant():
         merged.setdefault(code, {"ticker":code, "name":name})
     us_list = list(merged.values())
 
-    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
+    _log(f"🇰🇷 KR {en(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
 
     # 주기별 딕셔너리 준비
     buckets_kr = {"1m": {}, "15m": {}, "1d": {}, "1wk": {}}
@@ -312,7 +312,7 @@ def run_feedquant():
         code = it["ticker"]
         name = it["name"]
         for iv in ("1m", "15m", "1d", "1wk"):
-            print(f"build cache item {pure} interval {iv}", flush=True)
+            print(f"build cache item {code} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
                 if not buckets_us[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
