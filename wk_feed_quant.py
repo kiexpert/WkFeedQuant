@@ -80,55 +80,30 @@ _WK_OHLC_TOK = re.compile(r'(open|high|low|close|volume)', re.I)
 
 def wk_ultra_flatten_ohlcv(df):
     if df is None or len(df) == 0: return df
-    # 1) 플랫 컬럼명
     flat = ["_".join([str(x) for x in c if x not in (None,""," ")]) if isinstance(c,tuple) else str(c) for c in df.columns]
     df = df.copy(); df.columns = flat; m = {}
-    # 2) OHLCV 매핑
     for c in df.columns:
         k = _WK_OHLC_TOK.search(c.lower())
         if k: m[k.group(1).lower()] = c
     if len(m) < 5: raise KeyError("OHLCV columns not detected")
-    # 3) 타임스탬프 변환
-    ts = pd.to_datetime(df.index, utc=True, errors="coerce")
-    ts = (ts.view("int64") // 1_000_000).astype("int64")
-    # 4) 숫자 변환
-    num = lambda x: pd.to_numeric(x, errors="coerce")
-    o = num(df[m["open"]]).astype("float64")
-    h = num(df[m["high"]]).astype("float64")
-    l = num(df[m["low"]]).astype("float64")
-    c = num(df[m["close"]]).astype("float64")
+    ts = pd.to_datetime(df.index, utc = True, errors = "coerce"); ts = (ts.view("int64") // 1_000_000).astype("int64")
+    num = lambda x: pd.to_numeric(x, errors = "coerce")
+    o = num(df[m["open"]]).astype("float64"); h = num(df[m["high"]]).astype("float64")
+    l = num(df[m["low"]]).astype("float64"); c = num(df[m["close"]]).astype("float64")
     v = num(df[m["volume"]]).astype("int64")
-    # 5) 길이 불일치 보정
-    ml = max(len(o), len(h), len(l), len(c), len(v))
-    reidx = lambda x: x.reindex(range(ml))
-    o, h, l, c, v = map(reidx, (o, h, l, c, v))
-    # 6) high 전체 NaN 방어 (low → close → open 순 fallback)
-    if h.isna().all():
-        if not l.isna().all(): h = l.copy()
-        elif not c.isna().all(): h = c.copy()
-        elif not o.isna().all(): h = o.copy()
-    # 7) 소수점 정리
-    r2 = lambda x: x.round(2)
-    o, h, l, c = map(r2, (o, h, l, c))
+    round2 = lambda x: x.round(2); o, h, l, c = map(round2, (o, h, l, c))
     return pd.DataFrame({"ts": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
     
 def ensure_safe_volume(df, interval):
-    import math
-    if df is None or df.empty: return df
-    mins = {"1m":1,"15m":15,"1d":390,"1wk":390*5}.get(interval,15)
+    if df is None or df.empty:
+        return df
+    mins = {"1m": 1, "15m": 15, "1d": 390, "1wk": 390 * 5}.get(interval, 15)
     fb = mins * 60000
     vv = []
     for x in df["volume"]:
         try: xx = float(x)
-        except: xx = 0.0
-        # NaN, 음수, 0 → fallback
-        if (not math.isfinite(xx)) or xx <= 0:
-            vv.append(fb)
-            continue
-        iv = int(xx)
-        if iv < 1: iv = fb
-        vv.append(iv)
-        fb = iv
+        except: xx = 0
+        vv.append(fb if xx < 1 else int(xx))
     df = df.copy()
     df["volume"] = vv
     return df
@@ -136,48 +111,25 @@ def ensure_safe_volume(df, interval):
 def collect_profile(df):
     import math
     pf = {}
-    if df is None or len(df)==0: return pf,set()
-
     o = df["open"].values; h = df["high"].values
     l = df["low"].values;  c = df["close"].values
     v = df["volume"].values
-
-    # 1) 확실하게 정상 base 가격 찾기 (high → low → close → open 순)
-    base = None
-    for arr in (h,l,c,o):
-        for x in arr[::-1]:
-            try: fx = float(x)
-            except: continue
-            if math.isfinite(fx) and fx > 0:
-                base = fx
-                break
-        if base is not None: break
-
-    # 정상 가격 하나도 없으면 빈 매물대 리턴
-    if base is None:
-        return pf,set()
-
-    # 2) 스텝 계산
-    digits = int(math.floor(math.log10(base)))
-    step = max(0.01,10**(digits-4))
-
-    # 3) 가중치
-    w_o,w_l,w_h,w_c = 0.2,0.3,0.3,0.2
-
-    # 4) 매물대 계산
+    # ── 1) 막봉 고가로 자동 스텝 계산
+    last_high = h[-1]
+    digits = int(math.floor(math.log10(last_high)))
+    step = max(0.01, 10 ** (digits - 3))
+    # ── 2) 가중치
+    w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
+    # ── 3) 매물대 계산
     for i in range(len(c)):
-        try: vol = float(v[i])
-        except: vol = 0.0
-        if (not math.isfinite(vol)) or vol<=0: vol = 1.0
-
-        for price,w in ((o[i],w_o),(l[i],w_l),(h[i],w_h),(c[i],w_c)):
-            try: p = float(price)
-            except: continue
-            if not math.isfinite(p): continue
-            key = int(p//step)
-            pf[key] = pf.get(key,0.0) + vol*w
-
-    return pf,set(pf.keys())
+        vv = v[i] if v[i] > 0 else 10
+        for price, w in ((o[i], w_o), (l[i], w_l), (h[i], w_h), (c[i], w_c)):
+            slot = int((price + (0.5 * step)) / step)
+            pf[slot] = pf.get(slot, 0) + int(round(vv * w))
+    # ── 4) 정렬 + 실제가격 복원
+    pf_sorted = {round(slot * step, 2): vol for slot, vol in sorted(pf.items(), key=lambda x: x[1], reverse=True)}
+    pset = set(pf_sorted.keys())
+    return pf_sorted, pset
     
 def compute_energy_array(df):
     closes = df["close"].astype(float).values
@@ -300,10 +252,9 @@ def run_feedquant():
     for name, code, pct, val in kr_list:
         pure = code[1:]  # "A000660" → "000660"
         for iv in ("1m", "15m", "1d", "1wk"):
-            print(f"build cache item {pure} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_kr[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
+                if not buckets_kr[iv]: _log(json.dumps(item, indent=None))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
@@ -312,10 +263,9 @@ def run_feedquant():
         code = it["ticker"]
         name = it["name"]
         for iv in ("1m", "15m", "1d", "1wk"):
-            print(f"build cache item {code} interval {iv}", flush=True)
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_us[iv] or not pure.isalnum(): _log(json.dumps(item, indent=None))
+                if not buckets_us[iv]: _log(json.dumps(item, indent=None))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
