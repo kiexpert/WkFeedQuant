@@ -228,6 +228,11 @@ FORCED_US = {
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
 
+    import json, re
+    def json_dumps(obj):
+        s = json.dumps(obj, ensure_ascii=False, indent=None)
+        return re.sub(r',\s?"(?=[^0-9-])', '\n, "', s)
+
     # 기존
     kr_list = get_top_kr(limit=33)
     us_list = get_top_us(limit=33)
@@ -254,7 +259,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_kr[iv]: _log(json.dumps(item, indent=None).replace(', "','\n, "'))
+                if not buckets_kr[iv] or not item["profile"]: _log(json_dumps(item))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
@@ -265,7 +270,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_us[iv]: _log(json.dumps(item, indent=None).replace(', "','\n, "'))
+                if not buckets_us[iv] or not item["profile"]: _log(json_dumps(item))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
