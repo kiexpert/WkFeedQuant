@@ -8,15 +8,14 @@ import yfinance as yf
 import json, re
 CACHE_DIR = os.path.join(os.getcwd(), "cache")
 os.makedirs(CACHE_DIR, exist_ok = True)
-def json_dumps(obj):
+def wkjson_dumps(obj):
     s = json.dumps(obj, ensure_ascii=False, indent=None)
     return re.sub(r'([,{])\s*"(?=[^0-9-])', r'\n\1 "', s)
 def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
     with open(path, "w", encoding = "utf-8") as f:
-        f.write(json_dumps(obj))
-        # json.dump(obj, f, indent = None, ensure_ascii = False)
+        f.write(wkjson_dumps(obj))
 def get_top_kr(limit = 33, retry = 0):
     url = "https://finance.naver.com/sise/sise_quant.naver"
     headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,en;q=0.8"}
@@ -269,7 +268,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_kr[iv] or not item["profile"]: _log(json_dumps(item))
+                if not buckets_kr[iv] or not item["profile"]: _log(wkjson_dumps(item))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
@@ -280,7 +279,7 @@ def run_feedquant():
         for iv in ("1m", "15m", "1d", "1wk"):
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_us[iv] or not item["profile"]: _log(json_dumps(item))
+                if not buckets_us[iv] or not item["profile"]: _log(wkjson_dumps(item))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
