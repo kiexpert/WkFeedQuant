@@ -169,31 +169,41 @@ def load_ohlcv(code, interval = "15m", count = 77):
     }
 
 def build_cache_item(code, name, interval, count=77):
-    df, meta = load_ohlcv(code, interval, count)
-    if df is None or df.empty:
+    try:
+        df, meta = load_ohlcv(code, interval, count)
+        if df is None or df.empty:
+            return None
+
+        pf, pset = collect_profile(df)
+        ea, ea_last = compute_energy_array(df)
+
+        symbol = meta.get("symbol")
+        rows = meta.get("rows")
+        lbs = meta.get("last_bar_start")
+        lbe = meta.get("last_bar_end")
+
+        saved = datetime.datetime.utcnow().isoformat()
+
+        return {
+            "name": name,
+            "symbol": symbol,
+            "interval": interval,
+            "rows": rows,
+            "saved_at": saved,
+            "last_bar_start": lbs,
+            "last_bar_end": lbe,
+            "profile": pf,
+            "price_set": sorted(list(pset)),
+            "energies": ea,
+            # "energy_last": ea_last,
+            "ohlcv": df.to_dict("list"),
+        }
+
+    except Exception as e:
+        import traceback
+        print(f"⚠️ build_cache_item() 예외 발생: code={code}, interval={interval}")
+        traceback.print_exc()
         return None
-    pf, pset = collect_profile(df)
-    ea, ea_last = compute_energy_array(df)
-    symbol = meta.get("symbol")
-    rows = meta.get("rows")
-    lbs = meta.get("last_bar_start")
-    lbe = meta.get("last_bar_end")
-    # 저장 시간
-    saved = datetime.datetime.utcnow().isoformat()
-    return {
-        "name": name,
-        "symbol": symbol,
-        "interval": interval,
-        "rows": rows,
-        "saved_at": saved,
-        "last_bar_start": lbs,
-        "last_bar_end": lbe,
-        "profile": pf,
-        "price_set": sorted(list(pset)),
-        "energies": ea,
-        # "energy_last": ea_last, # 에너지 배열 마지막값~
-        "ohlcv": df.to_dict("list"),
-    }
 
 # ============================================================
 # 지표 강제 포함용 세트 (모두 미국 취급)
