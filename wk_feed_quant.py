@@ -244,8 +244,8 @@ def run_feedquant():
         return re.sub(r',\s?"(?=[^0-9-])', '\n, "', s)
 
     # 기존
-    kr_list = get_top_kr(limit=33)
-    us_list = get_top_us(limit=33)
+    kr_list = get_top_kr(limit=77)
+    us_list = get_top_us(limit=77)
     
     # -----------------------------------------
     # ★ 미국 지표 강제 포함: (ticker, name) 형태로 us_list 확장
