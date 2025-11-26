@@ -121,7 +121,7 @@ def collect_profile(df):
     # ── 1) 막봉 고가로 자동 스텝 계산
     last_high = h[-1]
     digits = int(math.floor(math.log10(last_high)))
-    step = max(0.01, 10 ** (digits - 2))
+    step = max(0.01, 10 ** (digits - 3))
     # ── 2) 가중치
     w_o, w_l, w_h, w_c = 0.2, 0.3, 0.3, 0.2
     # ── 3) 매물대 계산
