@@ -10,7 +10,7 @@ CACHE_DIR = os.path.join(os.getcwd(), "cache")
 os.makedirs(CACHE_DIR, exist_ok = True)
 def json_dumps(obj):
     s = json.dumps(obj, ensure_ascii=False, indent=None)
-    return re.sub(r',\s?"(?=[^0-9-])', '\n, "', s)
+    return re.sub(r'([,{])\s*"(?=[^0-9-])', r'\n\1 "', s)
 def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
