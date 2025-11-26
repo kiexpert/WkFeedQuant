@@ -5,13 +5,18 @@ import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 import yfinance as yf
+import json, re
 CACHE_DIR = os.path.join(os.getcwd(), "cache")
 os.makedirs(CACHE_DIR, exist_ok = True)
+def json_dumps(obj):
+    s = json.dumps(obj, ensure_ascii=False, indent=None)
+    return re.sub(r',\s?"(?=[^0-9-])', '\n, "', s)
 def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
     with open(path, "w", encoding = "utf-8") as f:
-        json.dump(obj, f, indent = None, ensure_ascii = False)
+        f.write(json_dumps(obj))
+        # json.dump(obj, f, indent = None, ensure_ascii = False)
 def get_top_kr(limit = 33, retry = 0):
     url = "https://finance.naver.com/sise/sise_quant.naver"
     headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,en;q=0.8"}
@@ -237,11 +242,6 @@ FORCED_US = {
 # ============================================================
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
-
-    import json, re
-    def json_dumps(obj):
-        s = json.dumps(obj, ensure_ascii=False, indent=None)
-        return re.sub(r',\s?"(?=[^0-9-])', '\n, "', s)
 
     # 기존
     kr_list = get_top_kr(limit=77)
