@@ -5,10 +5,10 @@ import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 import yfinance as yf
-import json, re
 CACHE_DIR = os.path.join(os.getcwd(), "cache")
 os.makedirs(CACHE_DIR, exist_ok = True)
 def wkjson_dumps(obj):
+    import json, re
     s = json.dumps(obj, ensure_ascii=False, indent=None)
     return re.sub(r'([,{])\s*"(?=[^0-9-])', r'\n\1 "', s)
 def _log(msg): print(msg, flush = True)
@@ -186,14 +186,14 @@ def build_cache_item(code, name, interval, count=77):
         lbs = meta.get("last_bar_start")
         lbe = meta.get("last_bar_end")
 
-        saved = datetime.datetime.utcnow().isoformat()
+        # saved = datetime.datetime.utcnow().isoformat()
 
         return {
             "name": name,
             "symbol": symbol,
             "interval": interval,
             "rows": rows,
-            "saved_at": saved,
+            # "saved_at": saved,
             "last_bar_start": lbs,
             "last_bar_end": lbe,
             "profile": pf,
