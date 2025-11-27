@@ -259,6 +259,7 @@ def run_feedquant():
         for iv in ivs:
             item = build_cache_item(code, name, iv)
             if item:
+                if not buckets_kr[iv]: _log(wkjson_dumps(item))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
@@ -268,6 +269,7 @@ def run_feedquant():
         for iv in ivs:
             item = build_cache_item(code, name, iv)
             if item:
+                if not buckets_us[iv]: _log(wkjson_dumps(item))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
@@ -277,6 +279,7 @@ def run_feedquant():
         for iv in ivs:
             item = build_cache_item(code, name, iv)
             if item:
+                if not buckets_idx[iv]: _log(wkjson_dumps(item))
                 buckets_idx[iv][code] = item
                 _log(f"  ✔ IDX {code} {iv}")
 
@@ -284,7 +287,7 @@ def run_feedquant():
     for iv in ivs:
         _save_json(os.path.join(CACHE_DIR,f"all_kr_{iv}.json"),buckets_kr[iv])
         _save_json(os.path.join(CACHE_DIR,f"all_us_{iv}.json"),buckets_us[iv])
-        _save_json(os.path.join(CACHE_DIR,f"all_idx_{iv}.json"),buckets_idx[iv])
+        _save_json(os.path.join(CACHE_DIR,f"all_ix_{iv}.json"),buckets_idx[iv])
 
     _log("✅ 모든 캐시 저장 완료 (KR / US / IDX 분리)")
     
