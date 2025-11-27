@@ -210,29 +210,21 @@ def build_cache_item(code, name, interval, count=77):
         return None
 
 # ============================================================
-# 지표 강제 포함용 세트 (모두 미국 취급)
+# 지표(지수/선물/환율 등)
 # ============================================================
 FORCED_US = {
-    # 미국 본체
-    "^NDX":"NASDAQ 100 지수","^DJI":"다우 지수","^GSPC":"S&P500 지수","^VIX":"CBOE VIX",
-    # 변동성
-    "UVXY":"Ultra VIX Short-Term 2x","VIXY":"VIX Short-Term","VIXM":"VIX Mid-Term","SVXY":"Short VIX Inverse",
-    # 3배 레버리지
     "TQQQ":"NASDAQ 3x","UPRO":"S&P500 3x","SOXL":"Semiconductor 3x","SPXL":"S&P500 3x alt",
-    "FNGU":"FANG+ 3x","TECL":"Tech 3x",
-    # 3배 인버스
-    "SQQQ":"NASDAQ 3x Inv","SOXS":"Semiconductor 3x Inv","SPXS":"S&P500 3x Inv","SDOW":"DOW 3x Inv",
-    "LABD":"Bio 3x Inv","TZA":"Russell2000 3x Inv",
-    # 보유·특수
-    "BITX":"Bitcoin 2x","CRCL":"Circle","MSTU":"MSTR Target 2x","MSTX":"MSTR 2x Long",
-    "NVDL":"NVIDIA 2x","PLTU":"Palantir 2x","PONY":"Pony AI","QCOM":"Qualcomm","QUBT":"QUBT","TSLL":"Tesla 2x",
-    # 선물·환율
-    "CL=F":"WTI Oil","BZ=F":"Brent Oil","GC=F":"Gold","SI=F":"Silver","HG=F":"Copper",
-    "ES=F":"S&P500 Futures","NQ=F":"NASDAQ Futures","YM=F":"DOW Futures","RTY=F":"R2000 Futures",
+    "FNGU":"FANG+ 3x","TECL":"Tech 3x","SQQQ":"NASDAQ 3x Inv","SOXS":"Semiconductor 3x Inv",
+    "SPXS":"S&P500 3x Inv","SDOW":"DOW 3x Inv","LABD":"Bio 3x Inv","TZA":"R2000 3x Inv",
+    "BITX":"Bitcoin 2x","MSTX":"MSTR 2x Long","NVDL":"NVIDIA 2x","PLTU":"Palantir 2x",
+    "TSLL":"Tesla 2x","QCOM":"Qualcomm","QUBT":"QUBT"
+}
+IDX_LIST = {
+    "^NDX":"NASDAQ 100","^DJI":"DOW 30","^GSPC":"S&P500","^VIX":"VIX",
+    "CL=F":"WTI","BZ=F":"Brent","GC=F":"Gold","SI=F":"Silver","HG=F":"Copper",
+    "ES=F":"S&P500 Fut","NQ=F":"NASDAQ Fut","YM=F":"DOW Fut","RTY=F":"R2000 Fut",
     "DX-Y.NYB":"Dollar Index","EURUSD=X":"EUR/USD","JPY=X":"USD/JPY","USDKRW=X":"USD/KRW",
-    # 글로벌 지수
-    "^N225":"Nikkei225","^HSI":"HSI","^FCHI":"CAC40","^GDAXI":"DAX",
-    # 국내 지수(미국 티커로 취급)
+    "^N225":"Nikkei225","^HSI":"HSI","^FCHI":"CAC40","^GDAXI":"DAX30",
     "^KS11":"KOSPI","^KQ11":"KOSDAQ"
 }
 
@@ -241,54 +233,60 @@ FORCED_US = {
 # ============================================================
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
-
-    # 기존
     kr_list = get_top_kr(limit=77)
     us_list = get_top_us(limit=77)
-    
-    # -----------------------------------------
-    # ★ 미국 지표 강제 포함: (ticker, name) 형태로 us_list 확장
-    # -----------------------------------------
-    forced = [(FORCED_US[k], k) for k in FORCED_US]  # (name, ticker)
-    # 기존 us_list 형식과 맞추기 위해 dict 생성
+
+    # US 확장(레버리지 ETF 추가)
     merged = {it["ticker"]: it for it in us_list}
-    for name, code in forced:
-        merged.setdefault(code, {"ticker":code, "name":name})
+    for code, name in FORCED_US.items():
+        merged.setdefault(code, {"ticker":code,"name":name})
     us_list = list(merged.values())
 
-    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 수집 완료")
+    # IDX 준비
+    idx_list = [{"ticker":k,"name":v} for k,v in IDX_LIST.items()]
 
-    # 주기별 딕셔너리 준비
-    buckets_kr = {"1m": {}, "15m": {}, "1d": {}, "1wk": {}}
-    buckets_us = {"1m": {}, "15m": {}, "1d": {}, "1wk": {}}
+    _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 / 📈 IDX {len(idx_list)}개")
+
+    # 버킷
+    ivs = ("1m","15m","1d","1wk")
+    buckets_kr  = {iv:{} for iv in ivs}
+    buckets_us  = {iv:{} for iv in ivs}
+    buckets_idx = {iv:{} for iv in ivs}
 
     # KR
     for name, code, pct, val in kr_list:
-        pure = code[1:]  # "A000660" → "000660"
-        for iv in ("1m", "15m", "1d", "1wk"):
+        pure = code[1:]
+        for iv in ivs:
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_kr[iv] or not item["profile"]: _log(wkjson_dumps(item))
                 buckets_kr[iv][pure] = item
                 _log(f"  ✔ KR {code} {iv}")
 
     # US
     for it in us_list:
-        code = it["ticker"]
-        name = it["name"]
-        for iv in ("1m", "15m", "1d", "1wk"):
+        code, name = it["ticker"], it["name"]
+        for iv in ivs:
             item = build_cache_item(code, name, iv)
             if item:
-                if not buckets_us[iv] or not item["profile"]: _log(wkjson_dumps(item))
                 buckets_us[iv][code] = item
                 _log(f"  ✔ US {code} {iv}")
 
-    # 파일 저장 (주기별)
-    for iv in ("1m", "15m", "1d", "1wk"):
-        _save_json(os.path.join(CACHE_DIR, f"all_kr_{iv}.json"), buckets_kr[iv])
-        _save_json(os.path.join(CACHE_DIR, f"all_us_{iv}.json"), buckets_us[iv])
+    # IDX (지표 캐시)
+    for it in idx_list:
+        code, name = it["ticker"], it["name"]
+        for iv in ivs:
+            item = build_cache_item(code, name, iv)
+            if item:
+                buckets_idx[iv][code] = item
+                _log(f"  ✔ IDX {code} {iv}")
 
-    _log("✅ 모든 캐시 저장 완료")
+    # 저장
+    for iv in ivs:
+        _save_json(os.path.join(CACHE_DIR,f"all_kr_{iv}.json"),buckets_kr[iv])
+        _save_json(os.path.join(CACHE_DIR,f"all_us_{iv}.json"),buckets_us[iv])
+        _save_json(os.path.join(CACHE_DIR,f"all_idx_{iv}.json"),buckets_idx[iv])
+
+    _log("✅ 모든 캐시 저장 완료 (KR / US / IDX 분리)")
     
 if __name__ == "__main__":
     run_feedquant()
