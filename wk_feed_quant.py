@@ -13,13 +13,8 @@ def wkjson_dumps(obj):
     # 1) 객체 새 key 시작: 숫자/음수 key 제외하고 줄바꿈
     s = re.sub(r'(, |{ )\s*"(?=[^0-9-])', r'\n\1"', s)
     # 2) 직전이 객체 닫기('}')이고, 다음 key가 객체 여는 key(": {")일 때만 줄바꿈 조정
-    s = re.sub(
-        r'}\n, "(?=[^0-9-][^"]*"\s*:\s*{)',
-        r'\n},"',
-        s
-    )
+    s = re.sub(r'}\n, "(?=[^0-9-][^"]*"\s*:\s*{\s*"[^0-9-])', r'\n},"', s)
     return s
-    
 def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
