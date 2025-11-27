@@ -10,7 +10,7 @@ os.makedirs(CACHE_DIR, exist_ok = True)
 def wkjson_dumps(obj):
     import json, re
     s = json.dumps(obj, ensure_ascii=False, separators=(', ', ': '), indent=None)
-    return re.sub(r'(, {|, |{ )\s*"(?=[^0-9-])', r'\n\1"', s).replace(', {"',',{"')
+    return re.sub(r'(},|, |{ )\s*"(?=[^0-9-])', r'\n\1"', s)
 def _log(msg): print(msg, flush = True)
 def _save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok = True)
