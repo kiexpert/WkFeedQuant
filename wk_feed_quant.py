@@ -217,11 +217,28 @@ def build_cache_item(code, name, interval, count=77):
 # 지표(지수/선물/환율 등)
 # ============================================================
 FORCED_US = {
-    "TQQQ":"NASDAQ 3x","UPRO":"S&P500 3x","SOXL":"Semiconductor 3x","SPXL":"S&P500 3x alt",
-    "FNGU":"FANG+ 3x","TECL":"Tech 3x","SQQQ":"NASDAQ 3x Inv","SOXS":"Semiconductor 3x Inv",
-    "SPXS":"S&P500 3x Inv","SDOW":"DOW 3x Inv","LABD":"Bio 3x Inv","TZA":"R2000 3x Inv",
-    "BITX":"Bitcoin 2x","MSTX":"MSTR 2x Long","NVDL":"NVIDIA 2x","PLTU":"Palantir 2x",
-    "TSLL":"Tesla 2x","QCOM":"Qualcomm","QUBT":"QUBT"
+    # ── 지수 레버리지 ──────────────────
+    "TQQQ":"NASDAQ 3x","SQQQ":"NASDAQ 3x Inv",
+    "UPRO":"S&P500 3x","SPXL":"S&P500 3x alt","SPXS":"S&P500 3x Inv",
+    "SOXL":"Semiconductor 3x","SOXS":"Semiconductor 3x Inv",
+    "TECL":"Tech 3x","SDOW":"DOW 3x Inv",
+    "TNA":"R2000 3x","TZA":"R2000 3x Inv",
+    # ── 변동성 레버리지 ─────────────────
+    "UVIX":"VIX Futures 2x","UVXY":"VIX Futures 1.5x",
+    "SVXY":"VIX Futures -0.5x","VIXI":"VIX Enhanced 16x",
+    # ── 크립토 ──────────────────────────
+    "BITX":"Bitcoin 2x",
+    # ── 메가캡 레버리지 ────────────────
+    "TSLL":"Tesla 2x","NVDL":"NVIDIA 2x","GGLL":"GOOGL 2x",
+    "MSFU":"MSFT 2x","AMZU":"AMZN 2x","FBYY":"META 2x",
+    "AMDL":"AMD 2x",
+    "MSTX":"MSTR 2x","PLTU":"Palantir 2x",
+    # ── 메가캡 x1(대체 레버리지 부재 시) ─
+    "AAPL":"Apple x1","AVGO":"Broadcom x1","LLY":"Eli Lilly x1",
+    "TSM":"TSMC x1","JPM":"JPMorgan x1",
+    "NFLX":"Netflix x1","BABA":"Alibaba x1","PYPL":"PayPal x1",
+    # ── 기타 관심 ──────────────────────
+    "QCOM":"Qualcomm","QUBT":"QUBT",
 }
 IDX_LIST = {
     "^NDX":"NASDAQ 100","^DJI":"DOW 30","^GSPC":"S&P500","^VIX":"VIX",
