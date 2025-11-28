@@ -239,6 +239,9 @@ FORCED_US = {
     "NFLX":"Netflix x1","BABA":"Alibaba x1","PYPL":"PayPal x1",
     # ── 기타 관심 ──────────────────────
     "QCOM":"Qualcomm","QUBT":"QUBT",
+    # ── MicroStrategy 레버리지 확장 ──
+    "MSTZ":"MSTR 2x alt",
+    "MSTU":"MSTR -2x alt",  # 감시용(인버스)
 }
 IDX_LIST = {
     "^NDX":"NASDAQ 100","^DJI":"DOW 30","^GSPC":"S&P500","^VIX":"VIX",
