@@ -16,7 +16,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Extract command
-        id: extract
         run: |
           echo "COMMENT=${{ github.event.comment.body }}" >> $GITHUB_ENV
           echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_ENV
