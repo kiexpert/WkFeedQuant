@@ -1,4 +1,4 @@
-name: MUD Command Handler
+name: MUD Tactical Command
 
 on:
   issue_comment:
@@ -15,30 +15,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract comment
+      - name: Install GH CLI
+        uses: cli/gh-action@v2
+
+      - name: Extract command
         id: extract
         run: |
           echo "COMMENT=${{ github.event.comment.body }}" >> $GITHUB_ENV
+          echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_ENV
 
-      - name: Respond
+      - name: Execute command handler
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
-          COMMENT="$COMMENT"
-          echo "Received: $COMMENT"
-
-          if [ "$COMMENT" = "쿡장 분석" ]; then
-            MSG="🕵️ 국장 분석을 준비 중입니다..."
-          elif [ "$COMMENT" = "미쿡 분석" ]; then
-            MSG="🛰️ 미쿡장 분석을 준비 중입니다..."
-          elif [ "$COMMENT" = "상태" ]; then
-            MSG="📦 상태 정보를 준비 중입니다..."
-          else
-            MSG="❓ 알 수 없는 명령입니다: $COMMENT"
-          fi
-
-          gh api \
-            --method PATCH \
-            /repos/${{ github.repository }}/issues/comments/${COMMENT_ID} \
-            -f body="$MSG"
+          chmod +x scripts/handle_command.sh
+          ./scripts/handle_command.sh "$COMMENT" "$COMMENT_ID"
