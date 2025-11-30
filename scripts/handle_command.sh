@@ -1,61 +1,99 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-COMMENT="$1"
-COMMENT_ID="$2"
-API="gh api --method PATCH /repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID} -f body="
+#────────────────────────────────────────────
+# 환경 변수(GitHub Actions가 자동 주입)
+#────────────────────────────────────────────
+ISSUE_NUMBER="$1"  # 입력받은 Issue 번호
+COMMAND="$2"       # 댓글 내용(명령)
+GITHUB_TOKEN="$GITHUB_TOKEN"
+REPO="$GITHUB_REPOSITORY"
 
-update_comment() { $API"$1" >/dev/null; }
+API="https://api.github.com/repos/${REPO}"
 
-scan_market() {
-  local market="$1"; local label
-  case "$market" in
-    kr) label="KR-Market";;
-    us) label="US-Market";;
-    ix) label="Index-Market";;
-    *)  label="Market";;
-  esac
+#────────────────────────────────────────────
+# GitHub 댓글 업데이트 함수
+#────────────────────────────────────────────
+update_comment() {
+    local body="$1"
+    # comment 제거 없이 'HQ' 라벨 댓글만 갱신
+    COMMENT_ID=$(gh api "${API}/issues/${ISSUE_NUMBER}/comments" \
+        --jq 'map(select(.body | contains("[HQ]")))[0].id' || true)
 
-  update_comment "[HQ] Commander Will Kim — Tactical Control Online."
-  sleep 1
-  update_comment "[HQ] ${label} Tactical Scan Initiated…\n▰▱▱▱▱ 20%\nData Uplink\n(데이터 링크 확보)"
-  sleep 1
-  update_comment "[HQ] ${label} Tactical Scan Initiated…\n▰▰▱▱▱ 40%\nVolume Profile Recon\n(매물대 정찰)"
-  sleep 1
-  update_comment "[HQ] ${label} Tactical Scan Initiated…\n▰▰▰▱▱ 60%\nEnergy-Flow Tracking\n(에너지 흐름 추적)"
-  sleep 1
-  update_comment "[HQ] ${label} Tactical Scan Initiated…\n▰▰▰▰▱ 80%\nSignal Strength Evaluation\n(신호 강도 평가)"
-  sleep 1
+    if [[ -n "${COMMENT_ID}" && "${COMMENT_ID}" != "null" ]]; then
+        gh api \
+            --method PATCH \
+            -H "Content-Type: application/json" \
+            -X PATCH "${API}/issues/comments/${COMMENT_ID}" \
+            -f body="$body" >/dev/null
+    else
+        gh api \
+            --method POST \
+            -H "Content-Type: application/json" \
+            -X POST "${API}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="$body" >/dev/null
+    fi
+}
 
-  local summary
-  summary="$(python3 scripts/analyze_market.py "$market" 2>/dev/null || echo '')"
+#────────────────────────────────────────────
+# 분석 실행기 (Python 호출)
+#────────────────────────────────────────────
 
-  local result
-  result=$(cat <<EOF
+analyze_market() {
+    local market="$1"
+    python3 scripts/analyze_market.py "$market"
+}
+
+#────────────────────────────────────────────
+# 명령 분기 처리
+# COMMAND의 공백 제거해서 매칭
+#────────────────────────────────────────────
+cmd=$(echo "$COMMAND" | tr -d '[:space:]')
+
+case "$cmd" in
+    "쿡장분석")
+        label="KR-Market"
+        summary="$(analyze_market kr)"
+        ;;
+    "미쿡분석")
+        label="US-Market"
+        summary="$(analyze_market us)"
+        ;;
+    "상태")
+        label="Market-Status"
+        summary="$(analyze_market all)"
+        ;;
+    *)
+        label="Unknown"
+        summary="❓ 미확인 명령: $COMMAND"
+        ;;
+esac
+
+#────────────────────────────────────────────
+# 액션 버튼 (댓글 POST 링크)
+#────────────────────────────────────────────
+BUTTONS=$(cat <<EOF
+➡️ [쿡장 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}#issuecomment-new)
+➡️ [미쿡 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}#issuecomment-new)
+➡️ [상태](https://github.com/${REPO}/issues/${ISSUE_NUMBER}#issuecomment-new)
+EOF
+)
+
+#────────────────────────────────────────────
+# HQ 출력 생성
+#────────────────────────────────────────────
+RESULT=$(cat <<EOF
 [HQ] Operation COMPLETE (${label})
 ▰▰▰▰▰ 100%
 
 ${summary}
 
 Awaiting next directive, Commander.
-➡️ [쿡장 분석] ➡️ [미쿡 분석] ➡️ [상태]
+${BUTTONS}
 EOF
 )
-  update_comment "$result"
-}
 
-case "$COMMENT" in
-  "쿡장 분석")
-    scan_market "kr"
-    ;;
-  "미쿡 분석")
-    scan_market "us"
-    ;;
-  "상태")
-    update_comment "[HQ] Systems Nominal. Awaiting Orders.\n(캐시: cache/all_kr_15m.json, cache/all_us_15m.json, cache/all_ix_15m.json)"
-    ;;
-  *)
-    update_comment "❓ Unknown Directive: $COMMENT"
-    ;;
-esac
-
+#────────────────────────────────────────────
+# 댓글 갱신(또는 생성)
+#────────────────────────────────────────────
+update_comment "$RESULT"
