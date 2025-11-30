@@ -10,39 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Ensure execute permission
+        run: chmod +x scripts/handle_command.sh
 
-      - name: Execute command handler
-        id: exec
+      - name: Run HQ Handler
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          chmod +x scripts/handle_command.sh
-          ./scripts/handle_command.sh || echo "script failed"
-
-      - name: Append workflow logs to comment
-        if: false # always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMENT_ID: ${{ github.event.comment.id }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          echo "Appending workflow log to comment..."
-          tail -n 20 $GITHUB_WORKSPACE/.github/workflows/hq.yml >/tmp/log.txt 2>/dev/null || true
-          body="$(cat /tmp/log.txt || echo 'No log')"
-          json="{\"body\":\"\n\n(Workflow Status: ${{ job.status }})\"}"
-          curl -s -X PATCH \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}"
-
-            
+          REPO: ${{ github.repository }}
+        run: ./scripts/handle_command.sh
