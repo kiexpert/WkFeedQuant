@@ -9,6 +9,7 @@ jobs:
     if: contains(github.event.comment.body, '분석') || contains(github.event.comment.body, '상태')
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
 
     steps:
@@ -18,16 +19,35 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Ensure execute permission
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gh
+
+      - name: Ensure script executable
         run: chmod +x scripts/handle_command.sh
 
-      - name: Run HQ Command Handler (Stream to comment & show in logs)
+      - name: Run HQ Command Handler
+        id: run_hq
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
+          RUN_URL: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: ./scripts/handle_command.sh || echo "fail" > .hq_failed
+
+      # 백업 알림
+      - name: Post failure backup notification
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: |
-          # 로그는 워크플로에서도 확인 가능
-          ./scripts/handle_command.sh | tee action.log
+          BODY="⚠️ 시스템 오류 발생\n🔗 로그: ${RUN_URL}"
+          gh api -X POST "/repos/${REPO}/issues/${ISSUE_NUMBER}/comments" -f body="${BODY}"
+
+          
