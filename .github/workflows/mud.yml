@@ -1,30 +1,28 @@
-name: MUD Tactical Command
-
 on:
   issue_comment:
     types: [created]
 
 jobs:
-  mud:
-    if: github.event.issue.number == 1
+  hq:
+    if: contains(github.event.comment.body, '분석') || contains(github.event.comment.body, '상태')
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: write
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract command
-        run: |
-          echo "COMMENT=${{ github.event.comment.body }}" >> $GITHUB_ENV
-          echo "COMMENT_ID=${{ github.event.comment.id }}" >> $GITHUB_ENV
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Execute command handler
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           chmod +x scripts/handle_command.sh
-          ./scripts/handle_command.sh "${ISSUE_NUMBER}" "${COMMENT_BODY}"
+          ./scripts/handle_command.sh
+
+          
