@@ -1,88 +1,73 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ISSUE_NUMBER="${1:-${ISSUE_NUMBER:-1}}"
-COMMAND="${2:-${COMMENT_BODY:-}}"
+COMMENT_ID="${COMMENT_ID:-}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-1}"
+COMMAND="${COMMENT_BODY:-${2:-}}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 REPO="${GITHUB_REPOSITORY:-}"
 
 API="https://api.github.com/repos/${REPO}"
 
-post_comment() {
-    local body="$1"
-    export BODY="$body"
-    local json
-    json=$(python3 - << 'EOF'
-import os, json
-body = os.environ.get("BODY","")
-if len(body) > 60000:
-    body = body[:60000] + "\n...[truncated]..."
-print(json.dumps({"body": body}))
+#────────────────────────────────────────────
+# 안전 JSON 생성 함수 (줄바꿈/따옴표 보호)
+#────────────────────────────────────────────
+json_escape() {
+    python3 - << 'EOF'
+import json,sys
+data=sys.stdin.read()
+print(json.dumps(data)[1:-1]) # strip quotes
 EOF
-)
-    curl -sS \
-      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-      -H "Accept: application/vnd.github+json" \
-      -X POST "${API}/issues/${ISSUE_NUMBER}/comments" \
-      --data-binary "$json" >/dev/null
 }
 
+#────────────────────────────────────────────
+# 댓글 내용 가져오기
+#────────────────────────────────────────────
+orig_body=$(curl -sS \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "${API}/issues/comments/${COMMENT_ID}" \
+  | python3 -c "import sys, json; print(json.load(sys.stdin).get('body',''))" \
+  || true)
+
+#────────────────────────────────────────────
+# 분석 함수
+#────────────────────────────────────────────
 run_analysis() {
     local market="$1"
     python3 scripts/analyze_market.py "$market" 2>&1 || true
 }
 
-cmd="$(echo "${COMMAND}" | tr -d '[:space:]')"
+cmd=$(echo "$COMMAND" | tr -d '[:space:]')
 
 case "$cmd" in
     "쿡장분석")
-        label="KR-Market"
         summary="$(run_analysis kr)"
         ;;
     "미쿡분석")
-        label="US-Market"
         summary="$(run_analysis us)"
         ;;
     "상태")
-        label="Market-Status"
         summary="$(run_analysis all)"
         ;;
     *)
-        label="Unknown"
         summary="❓ 미확인 명령: ${COMMAND}"
         ;;
 esac
 
-encode() {
-    python3 - <<EOF
-import urllib.parse, sys
-print(urllib.parse.quote(sys.argv[1]))
-EOF
-}
+divider="----------------------------------"
+log_block="${divider}\n\`\`\`\n${summary}\n\`\`\`"
 
-BTN_KR="$(encode "쿡장 분석")"
-BTN_US="$(encode "미쿡 분석")"
-BTN_ST="$(encode "상태")"
+new_body="${orig_body}\n${log_block}"
 
-buttons=$(cat <<EOF
-➡️ [쿡장 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_KR})
-➡️ [미쿡 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_US})
-➡️ [상태](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_ST})
-EOF
-)
+escaped=$(printf "%s" "$new_body" | json_escape)
 
-result=$(cat <<EOF
-[HQ] Operation COMPLETE (${label})
-▰▰▰▰▰ 100%
-
-\`\`\`
-${summary}
-\`\`\`
-
-Awaiting next directive, Commander.
-${buttons}
-EOF
-)
-
-post_comment "$result"
-
+#────────────────────────────────────────────
+# 명령 댓글 수정(PATCH)
+#────────────────────────────────────────────
+curl -sS \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  -X PATCH "${API}/issues/comments/${COMMENT_ID}" \
+  --data-binary "{\"body\": \"${escaped}\"}" \
+  >/dev/null
