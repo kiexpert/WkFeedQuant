@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ──────────────────────────────────────
-# 환경 변수 확인
-# ──────────────────────────────────────
 if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   echo "GITHUB_TOKEN missing"
   exit 1
@@ -12,13 +9,8 @@ fi
 REPO="${REPO:-$GITHUB_REPOSITORY}"
 COMMENT_ID="${COMMENT_ID:-}"
 COMMENT_BODY="${COMMENT_BODY:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-}"
-
 API="https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID"
 
-# ──────────────────────────────────────
-# 화면 버퍼 (전체 댓글 내용 유지)
-# ──────────────────────────────────────
 SCREEN=""
 SCREEN_LAST=""
 
@@ -26,35 +18,31 @@ append() {
   SCREEN="${SCREEN}\n$1"
 }
 
-json_escape() {
+escape_json() {
   printf "%s" "$1" | sed 's/"/\\"/g'
 }
 
 flush() {
   if [[ "$SCREEN" == "$SCREEN_LAST" ]]; then return; fi
-  local bodyEscaped
-  bodyEscaped=$(json_escape "$SCREEN")
+  local msg; msg=$(escape_json "$SCREEN")
 
   curl -s -X PATCH "$API" \
     -H "Authorization: token $GITHUB_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"body\":\"${bodyEscaped}\"}" \
-    > /dev/null
+    -d "{\"body\":\"${msg}\"}" > /dev/null || true
 
   SCREEN_LAST="$SCREEN"
 }
 
-# 초기 메시지
+# 초기 메세지
 TS=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 append "$COMMENT_BODY"
 append "────────────"
 append "$TS"
-append "HQ Received and processing..."
+append "Command received…"
 flush
 
-# ──────────────────────────────────────
-# 실행 작업
-# ──────────────────────────────────────
+# 대상 판별
 if [[ "$COMMENT_BODY" == *"쿡장 분석"* ]]; then
   TARGET="KR"
 elif [[ "$COMMENT_BODY" == *"미쿡 분석"* ]]; then
@@ -65,24 +53,26 @@ else
   exit 0
 fi
 
-append "▶ ${TARGET} Analysis Started..."
+append "▶ ${TARGET} Analysis started"
 flush
 
-# Python 실행 + 스트림 캡처
-python3 <<EOF | while read -r line; do
+# Python 실행 스트림 처리 (정상 문법)
+python3 <<'EOF' > tmp_stream.txt
 import time
 for i in range(1, 8):
-    print(f"Processing item {i}/7 ...")
+    print(f"Processing {i}/7 …")
     time.sleep(0.4)
 EOF
-do
+
+# 스트림 읽기
+while IFS= read -r line; do
   append "$line"
   flush
-done
+done < tmp_stream.txt
+rm -f tmp_stream.txt
 
-# 완료 메시지
-append "🎯 ${TARGET} Analysis Complete"
+append "🎯 ${TARGET} Analysis COMPLETE"
 append "────────────"
 flush
-
 exit 0
+
