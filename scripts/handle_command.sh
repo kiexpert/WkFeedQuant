@@ -2,8 +2,8 @@
 set -euo pipefail
 
 trim() { echo "$1" | xargs; }
-
 COMMENT_BODY=$(trim "${COMMENT_BODY:-}")
+
 if [[ -z "$COMMENT_BODY" ]]; then exit 0; fi
 
 REPO="${REPO:-$GITHUB_REPOSITORY}"
@@ -20,17 +20,15 @@ SCREEN_LAST=""
 
 append() { SCREEN="${SCREEN}\n$1"; }
 
-escape_json() {
-  printf "%s" "$1" | sed 's/"/\\"/g'
-}
+json() { printf "%s" "$1" | sed 's/"/\\"/g'; }
 
 flush() {
   if [[ "$SCREEN" == "$SCREEN_LAST" ]]; then return; fi
-  local msg; msg=$(escape_json "$SCREEN")
   curl -s -X PATCH "$API" \
     -H "Authorization: token $GITHUB_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"body\":\"$msg\"}" > /dev/null || true
+    -d "{\"body\":\"$(json "$SCREEN")\"}" \
+    > /dev/null || true
   SCREEN_LAST="$SCREEN"
 }
 
@@ -41,25 +39,28 @@ append "$TS"
 append "HQ Processing… ($TARGET)"
 flush
 
-# Python 분석 실행 → 스트림 파일
+rm -f tmp.log || true
+
 python3 scripts/hq_analysis.py "$TARGET" > tmp.log 2>&1 &
-
 PID=$!
-SECONDS=0
 
+# 주기적으로 로그 확인 + 없으면 진행중 표시
 while kill -0 $PID 2>/dev/null; do
   if [[ -s tmp.log ]]; then
-    NEW=$(tail -n 10 tmp.log)
-    append "$NEW"
+    while IFS= read -r line; do
+      append "$line"
+    done < tmp.log
     > tmp.log
-    flush
+  else
+    append "… 진행중 …"
   fi
+  flush
   sleep 1
 done
 
-# 종료 후 마지막 로그 반영
+# 종료 후 남은 로그 반영
 if [[ -s tmp.log ]]; then
-  append "$(cat tmp.log)"
+  while IFS= read -r line; do append "$line"; done < tmp.log
   > tmp.log
   flush
 fi
@@ -70,3 +71,4 @@ flush
 
 rm -f tmp.log
 exit 0
+
