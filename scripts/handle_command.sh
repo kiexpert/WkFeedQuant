@@ -4,10 +4,10 @@ set -euo pipefail
 #────────────────────────────────────────────
 # 환경 변수(GitHub Actions가 자동 주입)
 #────────────────────────────────────────────
-ISSUE_NUMBER="$1"  # 입력받은 Issue 번호
-COMMAND="$2"       # 댓글 내용(명령)
-GITHUB_TOKEN="$GITHUB_TOKEN"
-REPO="$GITHUB_REPOSITORY"
+ISSUE_NUMBER="${1:-1}"
+COMMAND="${2:-""}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+REPO="${GITHUB_REPOSITORY:-}"
 
 API="https://api.github.com/repos/${REPO}"
 
