@@ -29,7 +29,7 @@ jobs:
           ./scripts/handle_command.sh || echo "script failed"
 
       - name: Append workflow logs to comment
-        if: always()
+        if: false # always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
