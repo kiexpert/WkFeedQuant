@@ -1,0 +1,44 @@
+name: MUD Command Handler
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  mud:
+    if: github.event.issue.number == 1
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract comment
+        id: extract
+        run: |
+          echo "COMMENT=${{ github.event.comment.body }}" >> $GITHUB_ENV
+
+      - name: Respond
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          COMMENT="$COMMENT"
+          echo "Received: $COMMENT"
+
+          if [ "$COMMENT" = "쿡장 분석" ]; then
+            MSG="🕵️ 국장 분석을 준비 중입니다..."
+          elif [ "$COMMENT" = "미쿡 분석" ]; then
+            MSG="🛰️ 미쿡장 분석을 준비 중입니다..."
+          elif [ "$COMMENT" = "상태" ]; then
+            MSG="📦 상태 정보를 준비 중입니다..."
+          else
+            MSG="❓ 알 수 없는 명령입니다: $COMMENT"
+          fi
+
+          gh api \
+            --method PATCH \
+            /repos/${{ github.repository }}/issues/comments/${COMMENT_ID} \
+            -f body="$MSG"
