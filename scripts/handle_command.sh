@@ -1,53 +1,83 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u  # -e 제거 (에러도 보고 댓글 달기 위해)
 
-BUFFER_FILE="stream_buffer.log"
-> "$BUFFER_FILE"
+COMMENT_BODY="${COMMENT_BODY:-}"
+COMMENT_ID="${COMMENT_ID:-}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-}"
+REPO="${REPO:-}"
+RUN_URL="${RUN_URL:-}"
 
-# 환경변수
-COMMENT=$(echo "$COMMENT_BODY" | sed 's/^[ \t]*//;s/[ \t]*$//')
-COMMAND_ID=$(echo "$COMMENT" | tr ' ' '_' | tr -d '"')
-CMD_FILE="scripts/cmd_${COMMAND_ID}.py"
+# GitHub API 댓글 함수(공통)
+post_comment() {
+    local message="$1"
+    echo "💬 댓글 등록: $message"
+    gh api \
+      --method POST \
+      "/repos/${REPO}/issues/${ISSUE_NUMBER}/comments" \
+      -f body="$message" >/dev/null 2>&1 || \
+      echo "⚠️ 댓글 전송 실패"
+}
 
-# 복명복창 즉시 댓글 새로 생성
-RESP=$(gh api -X POST "/repos/${REPO}/issues/${ISSUE_NUMBER}/comments" \
-  -f body="🫡 명령 수신: \"${COMMENT_BODY}\"\n준비 중…")
-COMMENT_ID_NEW=$(echo "$RESP" | jq -r '.id')
-COMMENT_URL="/repos/${REPO}/issues/comments/${COMMENT_ID_NEW}"
+post_reply() {
+    local message="$1"
+    if [[ -z "$COMMENT_ID" ]]; then
+        post_comment "$message"
+        return
+    fi
+    echo "↩️ 답글 등록: $message"
+    gh api \
+      --method POST \
+      "/repos/${REPO}/issues/comments/${COMMENT_ID}/replies" \
+      -f body="$message" >/dev/null 2>&1 || \
+      post_comment "$message"
+}
 
-# 명령 존재 확인
-if [[ ! -f "$CMD_FILE" ]]; then
-  CMDS=$(ls scripts/cmd_*.py 2>/dev/null \
-    | sed 's#scripts/cmd_##' | sed 's/.py$//' \
-    | tr '_' ' ' | paste -sd ', ' -)
+ack() {
+    local msg="$1"
+    echo "🫡 명령 수신: \"$msg\""
+    post_reply "🫡 명령 수신: \"$msg\"\n임무 확인 중…"
+}
 
-  gh api -X PATCH "$COMMENT_URL" \
-    -f body="❌ 알 수 없는 명령\n\n사용 가능: ${CMDS}"
-  exit 1
-fi
+# 실패 표시 파일
+rm -f .hq_failed
 
-# 파이썬 실행 + 버퍼 저장
-python3 "$CMD_FILE" | tee "$BUFFER_FILE" &
-PID=$!
+ack "$COMMENT_BODY"
 
-LAST=""
-while kill -0 $PID 2>/dev/null; do
-  CUR=$(cat "$BUFFER_FILE" 2>/dev/null || echo "")
+handle_analyze() {
+    local target="$1"
+    local script="scripts/cmd_${target}.py"
 
-  if [[ "$CUR" != "$LAST" ]]; then
-    LAST="$CUR"
-    gh api -X PATCH "$COMMENT_URL" \
-      -f body="${CUR}\n\n(🛰️ 스트리밍 중)"
-  fi
-  sleep 1
-done
+    if [[ ! -f "$script" ]]; then
+        post_reply "❌ 잘못된 명령 또는 미지원 대상: $target"
+        echo "script not found: $script"
+        echo "fail" > .hq_failed
+        return
+    fi
 
-# 종료 반영
-if wait $PID; then
-  gh api -X PATCH "$COMMENT_URL" \
-    -f body="$(cat "$BUFFER_FILE")\n\n🎯 임무 완료"
-else
-  gh api -X PATCH "$COMMENT_URL" \
-    -f body="$(cat "$BUFFER_FILE")\n\n⚠️ 실행 오류 발생"
-fi
+    # 실행
+    local TMP_OUT
+    TMP_OUT=$(mktemp)
 
+    echo "▶ ${target} 분석 시작"
+    if python "$script" >"$TMP_OUT" 2>&1; then
+        post_comment "$(cat "$TMP_OUT")"$'\n\n'"🎯 임무 완료"
+        echo "SUCCESS"
+    else
+        post_reply "🚨 분석 실패: 로그를 확인해 주세요.\n\n$(sed 's/^/> /' "$TMP_OUT")"
+        echo "fail" > .hq_failed
+    fi
+    rm -f "$TMP_OUT"
+}
+
+case "$COMMENT_BODY" in
+    *"미쿡 분석"*)
+        handle_analyze "us"
+        ;;
+    *"국장 분석"*)
+        handle_analyze "kr"
+        ;;
+    *)
+        post_reply "❓ 인식 불가: \"$COMMENT_BODY\"\n지원 명령: 미쿡 분석 / 국장 분석"
+        echo "fail" > .hq_failed
+        ;;
+esac
