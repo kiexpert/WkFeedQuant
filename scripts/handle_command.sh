@@ -22,7 +22,7 @@ COMMAND=$(echo "$COMMENT_BODY" \
   | tr ' ' '_' \
   | tr -d '"')
 
-CMD_FILE="cmd_${COMMAND}.py"
+CMD_FILE="scripts/cmd_${COMMAND}.py"
 
 # ────────────────────────────────────────────
 # 0) 복명복창: 즉시 사용자에게 확인 메시지
@@ -36,8 +36,8 @@ gh api -X PATCH "$COMMENT_URL" \
 # 1) 명령 파일 존재 확인
 # ────────────────────────────────────────────
 if [[ ! -f "$CMD_FILE" ]]; then
-  CMDS=$(ls -1 cmd_*.py \
-        | sed 's/^cmd_//' \
+  CMDS=$(ls -1 scripts/cmd_*.py \
+        | sed 's/^scripts/cmd_//' \
         | sed 's/\.py$//' \
         | tr '_' ' ' \
         | paste -sd ', ' -)
