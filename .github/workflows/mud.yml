@@ -22,8 +22,9 @@ jobs:
 
       - name: Execute command handler
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMENT_ID: ${{ github.event.comment.id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           chmod +x scripts/handle_command.sh
-          ./scripts/handle_command.sh "$COMMENT" "$COMMENT_ID"
+          ./scripts/handle_command.sh "${ISSUE_NUMBER}" "${COMMENT_BODY}"
