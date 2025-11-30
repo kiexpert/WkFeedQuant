@@ -48,7 +48,7 @@ jobs:
             -d "{\"body\": \"$(echo -e ${BODY})\"}"
 
       - name: Report Failure (new comment)
-        if: failure() || exists('.hq_failed')
+        if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUM: ${{ github.event.issue.number }}
