@@ -53,7 +53,23 @@ case "$cmd" in
         ;;
 esac
 
-buttons="➡️ 명령: 쿡장 분석 / 미쿡 분석 / 상태"
+encode() {
+    python3 - <<EOF
+import urllib.parse, sys
+print(urllib.parse.quote(sys.argv[1]))
+EOF
+}
+
+BTN_KR="$(encode "쿡장 분석")"
+BTN_US="$(encode "미쿡 분석")"
+BTN_ST="$(encode "상태")"
+
+buttons=$(cat <<EOF
+➡️ [쿡장 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_KR})
+➡️ [미쿡 분석](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_US})
+➡️ [상태](https://github.com/${REPO}/issues/${ISSUE_NUMBER}/new?body=${BTN_ST})
+EOF
+)
 
 result=$(cat <<EOF
 [HQ] Operation COMPLETE (${label})
@@ -69,3 +85,4 @@ EOF
 )
 
 post_comment "$result"
+
