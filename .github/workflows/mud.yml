@@ -21,7 +21,8 @@ jobs:
       - name: Ensure execute permission
         run: chmod +x scripts/handle_command.sh
 
-      - name: Run HQ Command Handler (Stream to comment & show in logs)
+      - name: Run HQ Command Handler (capture logs)
+        id: run_hq
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
@@ -29,5 +30,48 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
-          # 로그는 워크플로에서도 확인 가능
-          ./scripts/handle_command.sh | tee action.log
+          # 표준출력/에러 모두 로그파일 기록
+          ./scripts/handle_command.sh > tmp.log 2>&1 || echo "failed" > .hq_failed
+
+      - name: Report Success (append)
+        if: success() && steps.run_hq.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY="\n(Workflow Status: success)"
+          curl -s -X PATCH \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -d "{\"body\": \"$(echo -e ${BODY})\"}"
+
+      - name: Report Failure (new comment)
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          TRIGGER_URL: https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}#issuecomment-${{ github.event.comment.id }}
+          WF_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "⚠️ Command Failed" > err.log
+          echo "" >> err.log
+          echo "🧭 Workflow ▶ ${WF_URL}" >> err.log
+          echo "📌 Trigger ▶ ${TRIGGER_URL}" >> err.log
+          echo "" >> err.log
+          echo "───── LOGS ─────" >> err.log
+          cat tmp.log >> err.log || true
+
+          # JSON escape
+          esc_body=$(sed 's/"/\\"/g' err.log)
+
+          curl -s -X POST \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/${REPO}/issues/${ISSUE_NUM}/comments" \
+            -d "{\"body\": \"${esc_body}\"}"
+
+            
