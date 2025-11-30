@@ -28,9 +28,16 @@ CMD_FILE="cmd_${COMMAND}.py"
 # 0) 명령 확인
 # ────────────────────────────────────────────
 if [[ ! -f "$CMD_FILE" ]]; then
-  gh api -X PATCH "$COMMENT_URL" \
-    -f body="❌ Unknown command: ${COMMAND}
-지원되지 않는 명령입니다. 다시 입력해주세요."
+  CMDS=$(ls -1 cmd_*.py \
+        | sed 's/^cmd_//' \
+        | sed 's/\.py$//' \
+        | tr '_' ' ' \
+        | paste -sd ', ' -)
+  
+  gh api -X PATCH "$COMMENT_URL" -f body="❌ 알 수 없는 명령: ${COMMAND}
+
+사용 가능한 명령:
+${CMDS}"
   exit 1
 fi
 
