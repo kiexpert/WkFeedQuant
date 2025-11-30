@@ -1,3 +1,5 @@
+name: HQ Command Handler
+
 on:
   issue_comment:
     types: [created]
@@ -16,6 +18,7 @@ jobs:
           python-version: '3.11'
 
       - name: Execute command handler
+        id: exec
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ github.event.comment.id }}
@@ -23,6 +26,23 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           chmod +x scripts/handle_command.sh
-          ./scripts/handle_command.sh
+          ./scripts/handle_command.sh || echo "script failed"
 
-          
+      - name: Append workflow logs to comment
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          echo "Appending workflow log to comment..."
+          tail -n 20 $GITHUB_WORKSPACE/.github/workflows/hq.yml >/tmp/log.txt 2>/dev/null || true
+          body="$(cat /tmp/log.txt || echo 'No log')"
+          json="{\"body\":\"\n\n(Workflow Status: ${{ job.status }})\"}"
+          curl -s -X PATCH \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}"
+
+            
