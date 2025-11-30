@@ -1,83 +1,98 @@
 #!/usr/bin/env bash
-set -u  # -e 제거 (에러도 보고 댓글 달기 위해)
+set -euo pipefail
 
-COMMENT_BODY="${COMMENT_BODY:-}"
-COMMENT_ID="${COMMENT_ID:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-}"
-REPO="${REPO:-}"
-RUN_URL="${RUN_URL:-}"
+# ────────────────────────────────────────────
+# 환경변수 (워크플로가 설정함)
+# ────────────────────────────────────────────
+# GITHUB_TOKEN
+# COMMENT_ID
+# COMMENT_BODY
+# ISSUE_NUMBER
+# REPO (owner/repo)
+# ────────────────────────────────────────────
 
-# GitHub API 댓글 함수(공통)
-post_comment() {
-    local message="$1"
-    echo "💬 댓글 등록: $message"
-    gh api \
-      --method POST \
-      "/repos/${REPO}/issues/${ISSUE_NUMBER}/comments" \
-      -f body="$message" >/dev/null 2>&1 || \
-      echo "⚠️ 댓글 전송 실패"
-}
+BUFFER_FILE=".hq_buffer.log"
+> "$BUFFER_FILE"
 
-post_reply() {
-    local message="$1"
-    if [[ -z "$COMMENT_ID" ]]; then
-        post_comment "$message"
-        return
-    fi
-    echo "↩️ 답글 등록: $message"
-    gh api \
-      --method POST \
-      "/repos/${REPO}/issues/comments/${COMMENT_ID}/replies" \
-      -f body="$message" >/dev/null 2>&1 || \
-      post_comment "$message"
-}
+COMMENT_URL="/repos/${REPO}/issues/comments/${COMMENT_ID}"
 
-ack() {
-    local msg="$1"
-    echo "🫡 명령 수신: \"$msg\""
-    post_reply "🫡 명령 수신: \"$msg\"\n임무 확인 중…"
-}
+# 명령 추출 (앞뒤 공백 제거 후 스페이스를 _로 변환)
+COMMAND=$(echo "$COMMENT_BODY" \
+  | sed 's/^[ \t]*//;s/[ \t]*$//' \
+  | tr ' ' '_' \
+  | tr -d '"')
 
-# 실패 표시 파일
-rm -f .hq_failed
+CMD_FILE="cmd_${COMMAND}.py"
 
-ack "$COMMENT_BODY"
+# ────────────────────────────────────────────
+# 0) 복명복창: 즉시 사용자에게 확인 메시지
+# ────────────────────────────────────────────
+gh api -X PATCH "$COMMENT_URL" \
+  -f body="🫡 명령 수신: \"${COMMENT_BODY}\"
 
-handle_analyze() {
-    local target="$1"
-    local script="scripts/cmd_${target}.py"
+임무 확인 중…"
 
-    if [[ ! -f "$script" ]]; then
-        post_reply "❌ 잘못된 명령 또는 미지원 대상: $target"
-        echo "script not found: $script"
-        echo "fail" > .hq_failed
-        return
-    fi
+# ────────────────────────────────────────────
+# 1) 명령 파일 존재 확인
+# ────────────────────────────────────────────
+if [[ ! -f "$CMD_FILE" ]]; then
+  CMDS=$(ls -1 cmd_*.py \
+        | sed 's/^cmd_//' \
+        | sed 's/\.py$//' \
+        | tr '_' ' ' \
+        | paste -sd ', ' -)
 
-    # 실행
-    local TMP_OUT
-    TMP_OUT=$(mktemp)
+  gh api -X PATCH "$COMMENT_URL" \
+    -f body="🫡 명령 수신: \"${COMMENT_BODY}\"
 
-    echo "▶ ${target} 분석 시작"
-    if python "$script" >"$TMP_OUT" 2>&1; then
-        post_comment "$(cat "$TMP_OUT")"$'\n\n'"🎯 임무 완료"
-        echo "SUCCESS"
-    else
-        post_reply "🚨 분석 실패: 로그를 확인해 주세요.\n\n$(sed 's/^/> /' "$TMP_OUT")"
-        echo "fail" > .hq_failed
-    fi
-    rm -f "$TMP_OUT"
-}
+❌ 알 수 없는 명령: ${COMMAND}
+사용 가능한 명령: ${CMDS}"
+  exit 1
+fi
 
-case "$COMMENT_BODY" in
-    *"미쿡 분석"*)
-        handle_analyze "us"
-        ;;
-    *"국장 분석"*)
-        handle_analyze "kr"
-        ;;
-    *)
-        post_reply "❓ 인식 불가: \"$COMMENT_BODY\"\n지원 명령: 미쿡 분석 / 국장 분석"
-        echo "fail" > .hq_failed
-        ;;
-esac
+# ────────────────────────────────────────────
+# 2) 임무 수행 시작 알림 (즉시)
+# ────────────────────────────────────────────
+gh api -X PATCH "$COMMENT_URL" \
+  -f body="🫡 명령 수신: \"${COMMENT_BODY}\"
+
+▶ 임무 수행 시작… (Streaming Mode)"
+
+# ────────────────────────────────────────────
+# 3) 명령 실행 (tee로 버퍼링)
+# ────────────────────────────────────────────
+python3 "$CMD_FILE" 2>&1 | tee "$BUFFER_FILE" &
+PID=$!
+LAST_SIZE=0
+
+# ────────────────────────────────────────────
+# 4) 실시간 댓글 업데이트 루프
+# ────────────────────────────────────────────
+while kill -0 $PID 2>/dev/null; do
+  CUR_SIZE=$(stat -c%s "$BUFFER_FILE" 2>/dev/null || echo 0)
+  if [ "$CUR_SIZE" -ne "$LAST_SIZE" ]; then
+    LAST_SIZE="$CUR_SIZE"
+    CONTENT=$(cat "$BUFFER_FILE")
+    gh api -X PATCH "$COMMENT_URL" \
+      -f body="${CONTENT}\n\n⏳ 진행 중…"
+  fi
+  sleep 1
+done
+
+wait $PID
+EXIT_CODE=$?
+
+# ────────────────────────────────────────────
+# 5) 종료 후 최종 출력 반영
+# ────────────────────────────────────────────
+CONTENT=$(cat "$BUFFER_FILE")
+
+if [ "$EXIT_CODE" -eq 0 ]; then
+  gh api -X PATCH "$COMMENT_URL" \
+    -f body="${CONTENT}\n\n🎯 작업 완료"
+else
+  gh api -X PATCH "$COMMENT_URL" \
+    -f body="${CONTENT}\n\n⚠️ 오류 발생 (워크플로 로그 참고)"
+fi
+
+exit $EXIT_CODE
