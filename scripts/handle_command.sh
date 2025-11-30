@@ -1,56 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ISSUE_NUMBER="${1:-1}"
-COMMAND="${2:-""}"
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+ISSUE_NUMBER="${1:-${ISSUE_NUMBER:-1}}"
+COMMAND="${2:-${COMMENT_BODY:-}}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 REPO="${GITHUB_REPOSITORY:-}"
 
 API="https://api.github.com/repos/${REPO}"
 
-#────────────────────────────────────────────
-# POST comment helper
-#────────────────────────────────────────────
 post_comment() {
     local body="$1"
+    export BODY="$body"
+    local json
+    json=$(python3 - << 'EOF'
+import os, json
+body = os.environ.get("BODY","")
+if len(body) > 60000:
+    body = body[:60000] + "\n...[truncated]..."
+print(json.dumps({"body": body}))
+EOF
+)
     curl -sS \
       -H "Authorization: Bearer ${GITHUB_TOKEN}" \
       -H "Accept: application/vnd.github+json" \
       -X POST "${API}/issues/${ISSUE_NUMBER}/comments" \
-      -d "{\"body\": \"${body}\"}" >/dev/null
+      --data-binary "$json" >/dev/null
 }
 
-#────────────────────────────────────────────
-# RUN analyzer
-#────────────────────────────────────────────
 run_analysis() {
     local market="$1"
-    python3 scripts/analyze_market.py "$market" 2>&1
+    python3 scripts/analyze_market.py "$market" 2>&1 || true
 }
 
-cmd=$(echo "$COMMAND" | tr -d '[:space:]')
+cmd="$(echo "${COMMAND}" | tr -d '[:space:]')"
 
 case "$cmd" in
-    "쿡장분석") label="KR-Market"; summary="$(run_analysis kr)" ;;
-    "미쿡분석") label="US-Market"; summary="$(run_analysis us)" ;;
-    "상태")     label="Market-Status"; summary="$(run_analysis all)" ;;
+    "쿡장분석")
+        label="KR-Market"
+        summary="$(run_analysis kr)"
+        ;;
+    "미쿡분석")
+        label="US-Market"
+        summary="$(run_analysis us)"
+        ;;
+    "상태")
+        label="Market-Status"
+        summary="$(run_analysis all)"
+        ;;
     *)
         label="Unknown"
-        summary="❓ 미확인 명령: $COMMAND"
+        summary="❓ 미확인 명령: ${COMMAND}"
         ;;
 esac
 
-# Buttons
-BUTTONS=$(
-cat <<EOF
-➡️ 명령: 쿡장 분석 / 미쿡 분석 / 상태
-EOF
-)
+buttons="➡️ 명령: 쿡장 분석 / 미쿡 분석 / 상태"
 
-#────────────────────────────────────────────
-# HQ Report
-#────────────────────────────────────────────
-RESULT=$(cat <<EOF
+result=$(cat <<EOF
 [HQ] Operation COMPLETE (${label})
 ▰▰▰▰▰ 100%
 
@@ -59,12 +64,8 @@ ${summary}
 \`\`\`
 
 Awaiting next directive, Commander.
-${BUTTONS}
+${buttons}
 EOF
 )
 
-#────────────────────────────────────────────
-# REPORT BACK TO GITHUB ISSUE
-#────────────────────────────────────────────
-post_comment "$RESULT"
-
+post_comment "$result"
