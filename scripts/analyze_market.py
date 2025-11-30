@@ -18,7 +18,7 @@ def load_market(market):
     path = os.path.join(CACHE_DIR, name)
     return _load_json(path)
 
-def collect_top(market, limit=3):
+def collect_top(market, limit=7):
     data = load_market(market)
     rows = []
     for code, item in data.items():
