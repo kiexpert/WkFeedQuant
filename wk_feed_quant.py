@@ -151,23 +151,31 @@ def compute_energy_array(df):
     v0, v1 = vols[-2], vols[-1]
     last = float(ea[-2] * (v1 / v0)) if v0 > 0 else float(ea[-2])
     return ea.tolist(), round(last, 3)
-def load_ohlcv(code, interval = "15m", count = 77):
+
+def load_ohlcv(code, interval="15m", count=77):
     yf_code = f"{code[1:]}.KS" if re.match(r"A\d{6}", code) else code
     period = "5d" if interval.endswith("m") else "77d"
-    raw = yf.download(yf_code, period = period, interval = interval,
-                      progress = False, auto_adjust = True)
+    raw = yf.download(yf_code, period=period, interval=interval,
+                      progress=False, auto_adjust=True)
     if raw is None or raw.empty:
         return None, None
     raw = raw.tail(count)
     df = wk_ultra_flatten_ohlcv(raw)
     df = ensure_safe_volume(df, interval)
-    ts = pd.to_datetime(df["ts"], unit = "ms", errors = "coerce").dropna()
-    if len(ts) >= 2:
-        s = ts.iloc[-1]
-        d = s - ts.iloc[-2]
+    ts = pd.to_datetime(df["ts"], unit="ms", errors="coerce").dropna()
+    if len(ts) >= 3:
+        d1 = ts.iloc[-1] - ts.iloc[-2]
+        d2 = ts.iloc[-2] - ts.iloc[-3]
+        d = min(d1, d2)
+    elif len(ts) == 2:
+        d = ts.iloc[-1] - ts.iloc[-2]
     else:
-        s = ts.iloc[-1] if len(ts) == 1 else pd.Timestamp.utcnow()
-        d = datetime.timedelta(minutes = 15)
+        if interval.endswith("m"):
+            mins = int(interval[:-1]) if interval[:-1].isdigit() else 15
+            d = pd.Timedelta(minutes=mins)
+        else:
+            d = pd.Timedelta(days=1)
+    s = ts.iloc[-1] if len(ts) > 0 else pd.Timestamp.utcnow()
     e = s + d
     return df, {
         "symbol": yf_code,
