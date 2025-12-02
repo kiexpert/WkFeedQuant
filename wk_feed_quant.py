@@ -224,6 +224,30 @@ def build_cache_item(code, name, interval, count=77):
 # ============================================================
 # 지표(지수/선물/환율 등)
 # ============================================================
+FORCED_KR = {
+    "487240": "KODEX AI전력핵심설비",
+    "466920": "SOL 조선TOP3플러스",
+    "011200": "HMM",
+    "035420": "NAVER",
+    "007660": "이수페타시스",
+    "042660": "한화오션",
+    "005930": "삼성전자",
+    "034020": "두산에너빌리티",
+    "000720": "현대건설",
+    "035720": "카카오",
+    "069500": "KODEX 200",
+    "204320": "HL만도",
+    "015760": "한국전력",
+    "411060": "ACE KRX금현물",
+    "091180": "KODEX 자동차",
+    "396500": "TIGER 반도체TOP10",
+    "229200": "KODEX 코스닥150",
+    "305720": "KODEX 2차전지산업",
+    "450140": "코오롱모빌리티그룹",
+    "092200": "디아이씨",
+    "251340": "KODEX 코스닥150선물인버스",
+    "353200": "대덕전자",
+}
 FORCED_US = {
     # ── 지수 레버리지 ──────────────────
     "TQQQ":"NASDAQ 3x","SQQQ":"NASDAQ 3x Inv",
@@ -265,9 +289,16 @@ IDX_LIST = {
 # ============================================================
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
-    kr_list = get_top_kr(limit=77)
-    us_list = get_top_us(limit=77)
 
+    kr_list = get_top_kr(limit=77)
+    # KR 확장(보유 종목 강제 포함)
+    merged_kr = {(code, name): (pct, val) for name, code, pct, val in kr_list}
+    for pure, nm in FORCED_KR.items():
+        code = f"A{pure}"
+        merged_kr.setdefault((code, nm), (0.0, 0.0))
+    kr_list = [(nm, cd, pct, vl) for (cd, nm), (pct, vl) in merged_kr.items()]
+
+    us_list = get_top_us(limit=77)
     # US 확장(레버리지 ETF 추가)
     merged = {it["ticker"]: it for it in us_list}
     for code, name in FORCED_US.items():
