@@ -287,72 +287,92 @@ IDX_LIST = {
 # ============================================================
 # 주기별 캐시 저장
 # ============================================================
+FORCED_KR_FILE="forced_kr.json"
+FORCED_US_FILE="forced_us.json"
+
+def load_forced_json(path,is_kr=False):
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path,"r",encoding="utf-8") as f:
+            obj=json.load(f)
+        out={}
+        for k,v in obj.items():
+            code=f"A{k}" if is_kr and not k.startswith("A") else k
+            out[code]=v
+        return out
+    except:
+        return {}
+
 def run_feedquant():
     _log("▶ WkFeedQuant 시작")
 
-    kr_list = get_top_kr(limit=77)
-    # KR 확장(보유 종목 강제 포함)
-    merged_kr = {(code, name): (pct, val) for name, code, pct, val in kr_list}
-    for pure, nm in FORCED_KR.items():
-        code = f"A{pure}"
-        merged_kr.setdefault((code, nm), (0.0, 0.0))
-    kr_list = [(nm, cd, pct, vl) for (cd, nm), (pct, vl) in merged_kr.items()]
+    ivs=("1m","15m","1d","1wk")
 
-    us_list = get_top_us(limit=77)
-    # US 확장(레버리지 ETF 추가)
-    merged = {it["ticker"]: it for it in us_list}
-    for code, name in FORCED_US.items():
-        merged.setdefault(code, {"ticker":code,"name":name})
-    us_list = list(merged.values())
+    kr_list=get_top_kr(limit=77)
+    forced_kr_dyn=load_forced_json(FORCED_KR_FILE,is_kr=True)
 
-    # IDX 준비
-    idx_list = [{"ticker":k,"name":v} for k,v in IDX_LIST.items()]
+    merged_kr={(cd,nm):(pct,val) for nm,cd,pct,val in kr_list}
+    for cd,nm in forced_kr_dyn.items():
+        merged_kr.setdefault((cd,nm),(0,0))
+    for pure,nm in FORCED_KR.items():
+        cd=f"A{pure}"
+        merged_kr.setdefault((cd,nm),(0,0))
+    kr_list=[(nm,cd,p,v) for (cd,nm),(p,v) in merged_kr.items()]
+
+    us_list=get_top_us(limit=77)
+    forced_us_dyn=load_forced_json(FORCED_US_FILE,is_kr=False)
+
+    merged={it["ticker"]:it for it in us_list}
+    for cd,nm in forced_us_dyn.items():
+        merged.setdefault(cd,{"ticker":cd,"name":f"{nm} ⚡"})
+    for cd,nm in FORCED_US.items():
+        merged.setdefault(cd,{"ticker":cd,"name":nm})
+    for cd in ("MSTX","MSTU","MSTZ"):
+        merged.setdefault(cd,{"ticker":cd,"name":FORCED_US.get(cd,cd)})
+    us_list=list(merged.values())
+
+    idx_list=[{"ticker":k,"name":v} for k,v in IDX_LIST.items()]
 
     _log(f"🇰🇷 KR {len(kr_list)}개 / 🇺🇸 US {len(us_list)}개 / 📈 IDX {len(idx_list)}개")
 
-    # 버킷
-    ivs = ("1m","15m","1d","1wk")
-    buckets_kr  = {iv:{} for iv in ivs}
-    buckets_us  = {iv:{} for iv in ivs}
-    buckets_idx = {iv:{} for iv in ivs}
+    buckets_kr={iv:{} for iv in ivs}
+    buckets_us={iv:{} for iv in ivs}
+    buckets_idx={iv:{} for iv in ivs}
 
-    # KR
-    for name, code, pct, val in kr_list:
-        pure = code[1:]
+    for nm,cd,p,v in kr_list:
+        pure=cd[1:]
         for iv in ivs:
-            item = build_cache_item(code, name, iv)
-            if item:
-                if not buckets_kr[iv]: _log(wkjson_dumps(item))
-                buckets_kr[iv][pure] = item
-                _log(f"  ✔ KR {code} {iv}")
+            it=build_cache_item(cd,nm,iv)
+            if it:
+                if not buckets_kr[iv]: _log(wkjson_dumps(it))
+                buckets_kr[iv][pure]=it
+                _log(f"  ✔ KR {cd} {iv}")
 
-    # US
     for it in us_list:
-        code, name = it["ticker"], it["name"]
+        cd,nm=it["ticker"],it["name"]
         for iv in ivs:
-            item = build_cache_item(code, name, iv)
+            item=build_cache_item(cd,nm,iv)
             if item:
                 if not buckets_us[iv]: _log(wkjson_dumps(item))
-                buckets_us[iv][code] = item
-                _log(f"  ✔ US {code} {iv}")
+                buckets_us[iv][cd]=item
+                _log(f"  ✔ US {cd} {iv}")
 
-    # IDX (지표 캐시)
     for it in idx_list:
-        code, name = it["ticker"], it["name"]
+        cd,nm=it["ticker"],it["name"]
         for iv in ivs:
-            item = build_cache_item(code, name, iv)
+            item=build_cache_item(cd,nm,iv)
             if item:
                 if not buckets_idx[iv]: _log(wkjson_dumps(item))
-                buckets_idx[iv][code] = item
-                _log(f"  ✔ IDX {code} {iv}")
+                buckets_idx[iv][cd]=item
+                _log(f"  ✔ IDX {cd} {iv}")
 
-    # 저장
     for iv in ivs:
         _save_json(os.path.join(CACHE_DIR,f"all_kr_{iv}.json"),buckets_kr[iv])
         _save_json(os.path.join(CACHE_DIR,f"all_us_{iv}.json"),buckets_us[iv])
         _save_json(os.path.join(CACHE_DIR,f"all_ix_{iv}.json"),buckets_idx[iv])
 
-    _log("✅ 모든 캐시 저장 완료 (KR / US / IDX 분리)")
-    
-if __name__ == "__main__":
+    _log("✅ 캐시 저장 완료")
+
+if __name__=="__main__":
     run_feedquant()
