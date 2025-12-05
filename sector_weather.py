@@ -1,36 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json, yfinance as yf
-from feedquant import fetch_ohlcv_auto
+import os, json, yfinance as yf
+
+CACHE_DIR = "cache"
+FILES = ["all_kr_15m.json","all_us_15m.json","all_ix_15m.json"]
+
+def load_codes_from_cache():
+    codes=[]
+    for fn in FILES:
+        path=os.path.join(CACHE_DIR,fn)
+        if not os.path.exists(path): continue
+        try:
+            with open(path,"r",encoding="utf-8") as f:
+                js=json.load(f)
+                codes+=list(js.keys())
+        except:
+            pass
+    return sorted(set(codes))
 
 def get_sector(code):
     try:
-        t=yf.Ticker(code)
-        s=t.info.get("sector")
-        return s if s else "Unknown"
+        info=yf.Ticker(code).info
+        sec=info.get("sector")
+        return sec if sec else "Unknown"
     except:
         return "Unknown"
 
 def summarize_sectors(codes):
-    out={}
+    sec_map={}
     for code in codes:
         sec=get_sector(code)
-        d=out.setdefault(sec,[])
-        d.append(code)
-    rep=lambda xs: xs[:2] if len(xs)>2 else xs
-    summary=[]
-    for sec, lst in out.items():
-        summary.append((sec, len(lst), rep(lst)))
-    summary.sort(key=lambda x:-x[1])
-    return summary
+        sec_map.setdefault(sec,[]).append(code)
+    out=[]
+    for sec, lst in sec_map.items():
+        leaders=lst[:3] if len(lst)>3 else lst
+        out.append((sec,len(lst),leaders))
+    out.sort(key=lambda x:-x[1])
+    return out
 
 if __name__=="__main__":
-    # feedquant 캐시에서 가져온 전체 코드 목록 예시
-    all_codes=list(set(
-        list(feedquant._feedquant["1m"]["us"].keys())+
-        list(feedquant._feedquant["1m"]["kr"].keys())+
-        list(feedquant._feedquant["1m"]["ix"].keys())
-    ))
-    summary=summarize_sectors(all_codes)
-    for sec,cnt,leaders in summary:
-        print(f"{sec}\t{cnt}\t{', '.join(leaders)}")
+    codes=load_codes_from_cache()
+    summary=summarize_sectors(codes)
+    print("섹터명\t종목수\t대표 종목")
+    for sec,cnt,lead in summary:
+        print(f"{sec}\t{cnt}\t{', '.join(lead)}")
