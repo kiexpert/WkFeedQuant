@@ -1,0 +1,85 @@
+name: Sector Weather
+
+on:
+  push:
+    paths:
+      - "**/sector_weather.*"
+
+  #schedule:
+  #  - cron: "*/10 * * * *"   # 매주 매일, 10분마다 실행
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 3️⃣ WillKimCache — Find & Cleanup
+      - name: 🔎 WillKimCache Finder
+        id: cache
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: bash .wk-cache-finder.sh || true
+
+      # 4️⃣ Restore
+      - name: 🔁 Restore WillKimCache
+        id: restore-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.WK_CACHE_DIR }}
+          key: ${{ env.WK_CACHE_KEY }}
+          restore-keys: |
+            wk-cache-
+
+      # 5️⃣ Python deps (minimal)
+      - name: 📦 Install dependencies
+        run: pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt | tail -n 9
+      
+      - name: Run FeedQuant
+        run: |
+          git config user.name "WkFeedQuant Bot"
+          git config user.email "action@github.com"
+      
+          # ⭐ 원격 main과 동일 상태로 초기화
+          git fetch --all
+          git reset --hard origin/main
+      
+          # 기존 캐시 제거
+          #rm -rf cache/*.json || true
+      
+          # 실행 (새 캐시 생성)
+          python sector_weather.py
+      
+      - name: Commit & Push Cache (Force)
+        run: |
+          # 모든 변경 스테이지
+          git add -A
+      
+          # 변경 없으면 commit 생략
+          git commit -m "Auto cache update $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || true
+      
+          # ⭐ 충돌 불가: 강제 푸시
+          git push -f origin HEAD:main
+
+      # 7️⃣ Save cache snapshot
+      - name: 💾 Save WillKimCache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.WK_CACHE_DIR }}
+          key: ${{ env.WK_CACHE_NEXT_KEY }}
