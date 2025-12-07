@@ -11,3 +11,12 @@ def send_text(msg: str):
         "chat_id": CHAT,
         "text": msg
     })
+
+def send_voice(path: str):
+    with open(path, "rb") as f:
+        return requests.post(
+            f"{API}/sendVoice",
+            data={"chat_id": CHAT},
+            files={"voice": f}
+        )
+
