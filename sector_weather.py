@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#────────────────────────────────────────
-# 🇺🇸 WkFeedQuant 기반 섹터 에너지 흐름 분석기
-#  - 종목별 energy = close * volume
-#  - 섹터별 총 에너지 + Δ 변화량
-#  - 섹터별 TOP3 리더(주도주/짝궁주)
-#────────────────────────────────────────
-
 import os, json, yfinance as yf
 import pandas as pd
 
 #────────────────────────────────────────
-# 야후 섹터 자동 추출 (ETF/레버리지는 Unknown → 규칙추가 예정)
+# ETF 자동 분류
 #────────────────────────────────────────
-def ysec(t):
+def classify_etf(t):
+    t=t.upper()
+    if t in ("SPY","QQQ","IWM","DIA","VTI"): return "Index ETF"
+    if t in ("TQQQ","SQQQ"): return "NASDAQ 3x"
+    if t in ("UPRO","SPXL","SPXS"): return "S&P500 3x"
+    if t in ("SOXL","SOXS"): return "Semiconductor 3x"
+    if t in ("TECL",): return "Tech 3x"
+    if t in ("SDOW",): return "DOW 3x Inv"
+    if t in ("BITX","MSTX","MSTZ"): return "Bitcoin Proxy"
+    if t in ("TSLL",): return "EV Leveraged"
+    if t in ("NVDL","GGLL","MSFU","AMZU","FBYY"): return "Megacap Leveraged"
+    if t in ("XLE","XLF","XLK","SMH","KWEB"): return f"{t} ETF"
+    return None
+
+#────────────────────────────────────────
+# 야후 섹터 자동 추출 + ETF 우선 분류
+#────────────────────────────────────────
+def ysec(ticker):
+    etf=classify_etf(ticker)
+    if etf: return etf,"ETF"
     try:
-        info=yf.Ticker(t).info
+        info=yf.Ticker(ticker).info
         sec=info.get("sector") or ""
         ind=info.get("industry") or ""
         if not sec: sec="Unknown"
@@ -35,18 +47,17 @@ def load_cache(path):
         return {}
 
 #────────────────────────────────────────
-# 종목 단위 에너지 계산
+# 종목 에너지 계산 (백만 MUSD)
 #────────────────────────────────────────
 def compute_energy(ohlcv):
-    c=ohlcv.get("close",[])
-    v=ohlcv.get("volume",[])
+    c=ohlcv.get("close",[]); v=ohlcv.get("volume",[])
     if len(c)<1 or len(v)<1: return 0.0
-    return float(c[-1])*float(v[-1])*1e-6  # 백만 단위 축소
+    return float(c[-1])*float(v[-1])*1e-6
 
 #────────────────────────────────────────
-# 섹터 스냅샷 계산
+# 섹터 스냅샷 생성
 #────────────────────────────────────────
-def sector_energy_snapshot(cache):
+def sector_snapshot(cache):
     rows=[]
     for cd,it in cache.items():
         sec,_=ysec(cd)
@@ -54,24 +65,18 @@ def sector_energy_snapshot(cache):
         rows.append((cd,sec,e))
     df=pd.DataFrame(rows,columns=["code","sector","energy"])
     sec=df.groupby("sector")["energy"].sum().sort_values(ascending=False)
-    lead=df.sort_values("energy",ascending=False)
-    return df,sec,lead
+    return df,sec
 
 #────────────────────────────────────────
-# 섹터 에너지 변화량 Δ
+# 섹터 Δ 비교
 #────────────────────────────────────────
 def compare(prev,now):
-    # prev/now 모두 pandas Series
-    # index 맞추고 차이 계산
-    prev2=prev.copy()
-    now2=now.copy()
-    # 없는 섹터는 0으로 처리
-    for s in now2.index:
-        if s not in prev2: prev2.loc[s]=0.0
-    for s in prev2.index:
-        if s not in now2: now2.loc[s]=0.0
-    d=(now2-prev2).sort_values(ascending=False)
-    return d
+    p=prev.copy(); n=now.copy()
+    for s in n.index:
+        if s not in p: p.loc[s]=0.0
+    for s in p.index:
+        if s not in n: n.loc[s]=0.0
+    return (n-p).sort_values(ascending=False)
 
 #────────────────────────────────────────
 # 메인 실행
@@ -84,29 +89,25 @@ if __name__=="__main__":
     if not now:
         print("⚠️ 현재 캐시 없음"); exit(0)
 
-    # 스냅샷 계산
-    df,sec_now,lead=sector_energy_snapshot(now)
+    df,sec_now=sector_snapshot(now)
 
     print("\n📊 섹터 총 에너지 (현재)")
     for s,v in sec_now.items():
-        print(f"  {s:24s} {v:10.3f} MUSD")
+        print(f"  {s:24s} {v:12.3f} MUSD")
 
-    # Δ 분석
     if os.path.exists(path_prev):
         prev=load_cache(path_prev)
-        _,sec_prev,_=sector_energy_snapshot(prev)
+        _,sec_prev=sector_snapshot(prev)
         d=compare(sec_prev,sec_now)
         print("\n📈 섹터 Δ 에너지 (전 스냅샷 대비)")
         for s,v in d.items():
             tag="▲" if v>0 else ("▼" if v<0 else "")
-            print(f"  {s:20s} {v:8.2f} {tag}")
+            print(f"  {s:24s} {v:12.3f} MUSD {tag}")
 
-    # TOP3 리더(주도주/짝궁주)
     print("\n🔥 섹터별 TOP3 에너지 리더")
     for s in sec_now.index:
         top=df[df["sector"]==s].sort_values("energy",ascending=False).head(3)
         print(f"\n[{s}]")
         for _,r in top.iterrows():
-            print(f"  {r['code']:6s}  energy={r['energy']:.2f}")
-
+            print(f"  {r['code']:8s}  energy={r['energy']:10.2f} MUSD")
 
