@@ -65,6 +65,10 @@ jobs:
           # sector_weather.py → briefing.txt 생성
           python3 sector_weather.py | tee briefing.txt
 
+      # 9️⃣ 📡 Telegram briefing (정각 전송)
+      - name: 📡 Send Sector Briefing to Telegram
+        run: python3 send_briefing.py
+
       # 7️⃣ Commit & Push Cache
       - name: Commit & Push Cache (Force)
         run: |
@@ -80,9 +84,5 @@ jobs:
         with:
           path: ${{ env.WK_CACHE_DIR }}
           key: ${{ env.WK_CACHE_NEXT_KEY }}
-
-      # 9️⃣ 📡 Telegram briefing (정각 전송)
-      - name: 📡 Send Sector Briefing to Telegram
-        run: python3 send_briefing.py
 
         
