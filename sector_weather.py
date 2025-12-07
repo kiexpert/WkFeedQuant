@@ -49,11 +49,13 @@ def load_cache(path):
 #────────────────────────────────────────
 def compute_energy(ohlcv):
     c=ohlcv.get("close",[]); v=ohlcv.get("volume",[])
-    if len(c)<2 or len(v)<2: return 0,0,0
+    if len(c)<28: return 0,0,0,0,0  # Δ15m/Δ1d 모두 필요
     last=float(c[-1])*float(v[-1])*1e-6
     prev=float(c[-2])*float(v[-2])*1e-6
-    diff=last-prev
-    return last,prev,diff
+    prev1d=float(c[-27])*float(v[-27])*1e-6
+    diff15=last-prev
+    diff1d=last-prev1d
+    return last,prev,prev1d,diff15,diff1d
 
 #────────────────────────────────────────
 # 섹터 스냅샷
@@ -62,13 +64,15 @@ def sector_snapshot(cache):
     rows=[]
     for cd,it in cache.items():
         sec=ysec(cd)
-        last,prev,diff=compute_energy(it.get("ohlcv",{}))
-        rows.append((cd,sec,last,prev,diff))
-    df=pd.DataFrame(rows,columns=["code","sector","last","prev","diff"])
+        last,prev,prev1d,d15,d1d=compute_energy(it.get("ohlcv",{}))
+        rows.append((cd,sec,last,prev,prev1d,d15,d1d))
+    df=pd.DataFrame(rows,columns=["code","sector","last","prev","prev1d","d15","d1d"])
     sec_now=df.groupby("sector")["last"].sum().sort_values(ascending=False)
     sec_prev=df.groupby("sector")["prev"].sum()
-    sec_diff=sec_now-sec_prev
-    return df,sec_now,sec_prev,sec_diff
+    sec_prev1=df.groupby("sector")["prev1d"].sum()
+    sec_d15=df.groupby("sector")["d15"].sum()
+    sec_d1d=df.groupby("sector")["d1d"].sum()
+    return df,sec_now,sec_prev,sec_prev1,sec_d15,sec_d1d
 
 #────────────────────────────────────────
 # 메인
@@ -79,20 +83,23 @@ if __name__=="__main__":
     if not now:
         print("⚠️ 현재 캐시 없음"); exit(0)
 
-    df,sec_now,sec_prev,sec_diff=sector_snapshot(now)
+    df,sec_now,sec_prev,sec_prev1,sec_d15,sec_d1d=sector_snapshot(now)
 
     print("\n📊 섹터 총 에너지 (현재)")
     for s in sec_now.index:
-        now_v=sec_now[s]; diff=sec_diff.get(s,0)
-        pct=(diff/sec_prev[s]*100) if sec_prev.get(s,0)>0 else 0
-        print(f"  {s:24s} {now_v:12.3f} MUSD   ({diff:+8.3f} / {pct:+6.2f}%)")
+        now_v=sec_now[s]
+        d15=sec_d15.get(s,0); p15=sec_prev.get(s,0); pct15=(d15/p15*100) if p15 else 0
+        d1d=sec_d1d.get(s,0); p1d=sec_prev1.get(s,0); pct1d=(d1d/p1d*100) if p1d else 0
+        print(f"  {s:24s} {now_v:12.3f} MUSD   (Δ15m:{d15:+8.3f}/{pct15:+6.2f}% , Δ1d:{d1d:+8.3f}/{pct1d:+6.2f}%)")
 
     print("\n🔥 섹터별 TOP3 에너지 리더")
     for s in sec_now.index:
         top=df[df["sector"]==s].sort_values("last",ascending=False).head(3)
         print(f"\n[{s}]")
         for _,r in top.iterrows():
-            last=r["last"]; prev=r["prev"]; diff=r["diff"]
-            pct=(diff/prev*100) if prev>0 else 0
-            print(f"  {r['code']:8s}  energy={last:10.2f} MUSD   ({diff:+7.2f} / {pct:+6.2f}%)")
+            last=r["last"]; prev=r["prev"]; prev1d=r["prev1d"]
+            d15=r["d15"]; d1d=r["d1d"]
+            pct15=(d15/prev*100) if prev else 0
+            pct1d=(d1d/prev1d*100) if prev1d else 0
+            print(f"  {r['code']:8s}  energy={last:10.2f} MUSD   (Δ15m:{d15:+7.2f}/{pct15:+6.2f}% , Δ1d:{d1d:+7.2f}/{pct1d:+6.2f}%)")
 
