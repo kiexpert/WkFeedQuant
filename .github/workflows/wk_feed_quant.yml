@@ -3,8 +3,8 @@ name: WkFeedQuant Cache Builder
 on:
   push:
     paths:
-      - "**/*.py"
-      - "**/wk_feed_quant.yml"
+      - "**/*feed*.py"
+      - "**/*feed*.yml"
 
   schedule:
     - cron: "*/10 * * * *"   # 매주 매일, 10분마다 실행
