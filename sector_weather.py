@@ -18,7 +18,9 @@ def classify_etf(t):
     if t in ("BITX","MSTX","MSTZ"): return "Bitcoin Proxy"
     if t in ("TSLL",): return "EV Leveraged"
     if t in ("NVDL","GGLL","MSFU","AMZU","FBYY"): return "Megacap Leveraged"
-    if t in ("XLE","XLF","XLK","SMH","KWEB"): return f"{t} ETF"
+    # ETF 나머지 → 초기엔 그대로 두고 나중에 ETC ETF로 묶는다
+    if t in ("XLE","XLF","XLK","SMH","KWEB"):
+        return f"{t} ETF"
     return None
 
 #────────────────────────────────────────
@@ -26,7 +28,8 @@ def classify_etf(t):
 #────────────────────────────────────────
 def ysec(ticker):
     etf=classify_etf(ticker)
-    if etf: return etf
+    if etf:
+        return etf
     try:
         info=yf.Ticker(ticker).info
         sec=info.get("sector") or "Unknown"
@@ -48,14 +51,17 @@ def load_cache(path):
 # 종목 에너지 계산 (MUSD)
 #────────────────────────────────────────
 def compute_energy(ohlcv):
-    c=ohlcv.get("close",[]); v=ohlcv.get("volume",[])
-    if len(c)<28: return 0,0,0,0,0  # Δ15m/Δ1d 모두 필요
-    last=float(c[-1])*float(v[-1])*1e-6
-    prev=float(c[-2])*float(v[-2])*1e-6
-    prev1d=float(c[-27])*float(v[-27])*1e-6
-    diff15=last-prev
-    diff1d=last-prev1d
-    return last,prev,prev1d,diff15,diff1d
+    try:
+        c=ohlcv.get("close",[]); v=ohlcv.get("volume",[])
+        if len(c)<28: return 0,0,0,0,0
+        last=float(c[-1])*float(v[-1])*1e-6
+        prev=float(c[-2])*float(v[-2])*1e-6
+        prev1=float(c[-27])*float(v[-27])*1e-6
+        d15=last-prev
+        d1d=last-prev1
+        return last,prev,prev1,d15,d1d
+    except:
+        return 0,0,0,0,0
 
 #────────────────────────────────────────
 # 섹터 스냅샷
@@ -64,12 +70,29 @@ def sector_snapshot(cache):
     rows=[]
     for cd,it in cache.items():
         sec=ysec(cd)
-        last,prev,prev1d,d15,d1d=compute_energy(it.get("ohlcv",{}))
-        rows.append((cd,sec,last,prev,prev1d,d15,d1d))
-    df=pd.DataFrame(rows,columns=["code","sector","last","prev","prev1d","d15","d1d"])
+        last,prev,prev1,d15,d1d=compute_energy(it.get("ohlcv",{}))
+        rows.append((cd,sec,last,prev,prev1,d15,d1d))
+    df=pd.DataFrame(rows,columns=["code","sector","last","prev","prev1","d15","d1d"])
+
+    #───────────────────────────────
+    # ETC ETF 통합 규칙 적용
+    #───────────────────────────────
+    sector_counts=df.groupby("sector")["code"].count().to_dict()
+    major=set([
+        "Index ETF","NASDAQ 3x","S&P500 3x","Semiconductor 3x",
+        "Tech 3x","DOW 3x Inv","Megacap Leveraged","Bitcoin Proxy",
+        "EV Leveraged"
+    ])
+    def normalize(s):
+        if s not in major and "ETF" in s and sector_counts.get(s,0)==1:
+            return "ETC ETF"
+        return s
+    df["sector"]=df["sector"].apply(normalize)
+
+    # 재계산(ETC ETF 반영)
     sec_now=df.groupby("sector")["last"].sum().sort_values(ascending=False)
     sec_prev=df.groupby("sector")["prev"].sum()
-    sec_prev1=df.groupby("sector")["prev1d"].sum()
+    sec_prev1=df.groupby("sector")["prev1"].sum()
     sec_d15=df.groupby("sector")["d15"].sum()
     sec_d1d=df.groupby("sector")["d1d"].sum()
     return df,sec_now,sec_prev,sec_prev1,sec_d15,sec_d1d
@@ -90,16 +113,19 @@ if __name__=="__main__":
         now_v=sec_now[s]
         d15=sec_d15.get(s,0); p15=sec_prev.get(s,0); pct15=(d15/p15*100) if p15 else 0
         d1d=sec_d1d.get(s,0); p1d=sec_prev1.get(s,0); pct1d=(d1d/p1d*100) if p1d else 0
-        print(f"  {s:24s} {now_v:12.3f} MUSD\n\t   (Δ15m:{d15:+8.3f}/{pct15:+6.2f}% , Δ1d:{d1d:+8.3f}/{pct1d:+6.2f}%)")
+
+        print(f"  {s:24s} {now_v:12.3f} MUSD")
+        print(f"\t   (Δ15m:{d15:+8.3f}/{pct15:+6.2f}% , Δ1d:{d1d:+8.3f}/{pct1d:+6.2f}%)")
 
     print("\n🔥 섹터별 TOP3 에너지 리더")
     for s in sec_now.index:
         top=df[df["sector"]==s].sort_values("last",ascending=False).head(3)
         print(f"\n[{s}]")
         for _,r in top.iterrows():
-            last=r["last"]; prev=r["prev"]; prev1d=r["prev1d"]
+            last=r["last"]; prev=r["prev"]; prev1=r["prev1"]
             d15=r["d15"]; d1d=r["d1d"]
             pct15=(d15/prev*100) if prev else 0
-            pct1d=(d1d/prev1d*100) if prev1d else 0
-            print(f"  {r['code']:8s}  energy={last:10.2f} MUSD   (Δ15m:{d15:+7.2f}/{pct15:+6.2f}% , Δ1d:{d1d:+7.2f}/{pct1d:+6.2f}%)")
+            pct1d=(d1d/prev1*100) if prev1 else 0
+            print(f"  {r['code']:8s}  energy={last:10.2f} MUSD   "
+                  f"(Δ15m:{d15:+7.2f}/{pct15:+6.2f}% , Δ1d:{d1d:+7.2f}/{pct1d:+6.2f}%)")
 
