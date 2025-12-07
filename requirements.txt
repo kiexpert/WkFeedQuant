@@ -8,3 +8,5 @@ requests
 wcwidth
 websocket-client
 yfinance
+gTTS
+
