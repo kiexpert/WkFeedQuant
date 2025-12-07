@@ -90,7 +90,7 @@ if __name__=="__main__":
         now_v=sec_now[s]
         d15=sec_d15.get(s,0); p15=sec_prev.get(s,0); pct15=(d15/p15*100) if p15 else 0
         d1d=sec_d1d.get(s,0); p1d=sec_prev1.get(s,0); pct1d=(d1d/p1d*100) if p1d else 0
-        print(f"  {s:24s} {now_v:12.3f} MUSD   (Δ15m:{d15:+8.3f}/{pct15:+6.2f}% , Δ1d:{d1d:+8.3f}/{pct1d:+6.2f}%)")
+        print(f"  {s:24s} {now_v:12.3f} MUSD\n\t   (Δ15m:{d15:+8.3f}/{pct15:+6.2f}% , Δ1d:{d1d:+8.3f}/{pct1d:+6.2f}%)")
 
     print("\n🔥 섹터별 TOP3 에너지 리더")
     for s in sec_now.index:
