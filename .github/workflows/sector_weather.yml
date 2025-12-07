@@ -5,8 +5,8 @@ on:
     paths:
       - "**/sector_weather.*"
 
-  #schedule:
-  #  - cron: "*/10 * * * *"   # 매주 매일, 10분마다 실행
+  schedule:
+    - cron: "0 * * * *"   # 매시 정각 실행
 
   workflow_dispatch:
 
@@ -16,6 +16,10 @@ permissions:
 jobs:
   build-cache:
     runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout
@@ -34,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: bash .wk-cache-finder.sh || true
 
-      # 4️⃣ Restore
+      # 4️⃣ Restore cache
       - name: 🔁 Restore WillKimCache
         id: restore-cache
         continue-on-error: true
@@ -45,37 +49,30 @@ jobs:
           restore-keys: |
             wk-cache-
 
-      # 5️⃣ Python deps (minimal)
+      # 5️⃣ Python deps
       - name: 📦 Install dependencies
         run: pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt | tail -n 9
-      
+
+      # 6️⃣ Run FeedQuant + Sector Weather
       - name: Run FeedQuant
         run: |
           git config user.name "WkFeedQuant Bot"
           git config user.email "action@github.com"
-      
-          # ⭐ 원격 main과 동일 상태로 초기화
+
           git fetch --all
           git reset --hard origin/main
-      
-          # 기존 캐시 제거
-          #rm -rf cache/*.json || true
-      
-          # 실행 (새 캐시 생성)
-          python sector_weather.py
-      
+
+          # sector_weather.py → briefing.txt 생성
+          python3 sector_weather.py > briefing.txt
+
+      # 7️⃣ Commit & Push Cache
       - name: Commit & Push Cache (Force)
         run: |
-          # 모든 변경 스테이지
           git add -A
-      
-          # 변경 없으면 commit 생략
           git commit -m "Auto cache update $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || true
-      
-          # ⭐ 충돌 불가: 강제 푸시
           git push -f origin HEAD:main
 
-      # 7️⃣ Save cache snapshot
+      # 8️⃣ Save cache snapshot
       - name: 💾 Save WillKimCache
         if: always()
         continue-on-error: true
@@ -83,3 +80,9 @@ jobs:
         with:
           path: ${{ env.WK_CACHE_DIR }}
           key: ${{ env.WK_CACHE_NEXT_KEY }}
+
+      # 9️⃣ 📡 Telegram briefing (정각 전송)
+      - name: 📡 Send Sector Briefing to Telegram
+        run: python3 send_briefing.py
+
+        
