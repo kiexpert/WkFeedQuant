@@ -89,7 +89,7 @@ if __name__=="__main__":
 
     print("\n📊 섹터 총 에너지 (현재)")
     for s,v in sec_now.items():
-        print(f"  {s:20s} {v:8.2f}")
+        print(f"  {s:24s} {v:10.3f} MUSD")
 
     # Δ 분석
     if os.path.exists(path_prev):
