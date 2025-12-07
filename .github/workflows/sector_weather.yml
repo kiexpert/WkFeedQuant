@@ -54,7 +54,7 @@ jobs:
         run: pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt | tail -n 9
 
       # 6️⃣ Run FeedQuant + Sector Weather
-      - name: Run FeedQuant
+      - name: Run Sector Weather
         run: |
           git config user.name "WkFeedQuant Bot"
           git config user.email "action@github.com"
@@ -63,7 +63,7 @@ jobs:
           git reset --hard origin/main
 
           # sector_weather.py → briefing.txt 생성
-          python3 sector_weather.py > briefing.txt
+          python3 sector_weather.py | tee briefing.txt
 
       # 7️⃣ Commit & Push Cache
       - name: Commit & Push Cache (Force)
