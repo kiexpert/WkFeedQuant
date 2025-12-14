@@ -10,56 +10,59 @@ BRIEF = "briefing.txt"
 # ----------------------------------------------------------
 def make_voice_summary(full_text: str) -> str:
     from datetime import datetime, timedelta
-    now_utc = datetime.utcnow()
-    now_kst = now_utc + timedelta(hours=9)
+    import re
+    # KST 시간 계산
+    now_kst = datetime.utcnow() + timedelta(hours=9)
     tstr = now_kst.strftime("%Y-%m-%d %H시 %M분")
-    # \n\t → \t 로 치환 후 라인 분리 (의도적 줄합치기 복구)
-    full_text = full_text.replace("\n\t", "\t")
-    lines = full_text.splitlines()
-    # 워크플로 로그에서 확인 가능하도록 디버그 출력
-    print("\n===== DEBUG: voice summary lines =====")
-    for i, line in enumerate(lines):
-        print(f"{i:03d}: {line}")
-    print("===== DEBUG END =====\n")
-    top15 = None
-    top1d_in = None
-    top1d_out = None
+    # 줄 전처리: 의도적 줄늘림(\n\t) 복구
+    lines = full_text.replace("\n\t", "\t").splitlines()
+    sector_rows = []
+    in_sector_block = False
+    # 섹터 요약 라인 정규식 (풀네임 + 수치 추출)
+    rx = re.compile(r'^\s{2,}([A-Za-z& ]+?)\s+([\d.]+)\s+MUSD.*?Δ15m:\s*([+-][\d.]+).*?Δ1d:\s*([+-][\d.]+)', re.UNICODE)
+    for line in lines:
+        if "📊 섹터 총 에너지" in line:
+            in_sector_block = True
+            continue
+        if in_sector_block and not line.strip():
+            break
+        if not in_sector_block:
+            continue
+        m = rx.search(line)
+        if not m:
+            continue
+        name = m.group(1).strip()
+        energy = float(m.group(2))
+        d15 = float(m.group(3))
+        d1d = float(m.group(4))
+        sector_rows.append({"name": name, "energy": energy, "d15": d15, "d1d": d1d})
+    # 금액 단위 음성 변환
+    def fmt_money(musd: float) -> str:
+        return f"{musd/1000:.1f} billion dollars" if musd >= 1000 else f"{musd:.1f} million dollars"
+    # 강세 / 유입 / 유출 판별
+    top15 = max(sector_rows, key=lambda x: x["d15"], default=None)
+    top1d_in = max(sector_rows, key=lambda x: x["d1d"], default=None)
+    top1d_out = min((s for s in sector_rows if s["d1d"] < 0), key=lambda x: x["d1d"], default=None)
+    # 주도주 (TOP3 첫 종목)
     leader = None
     for line in lines:
-        s = line.strip()
-        if not s:
-            continue
-        # 섹터 요약 테이블 라인만 대상
-        if "MUSD" in line and "(" in line and ")" in line:
-            sector = s.split()[0]
-            # 15분 기준 최강 섹터 (정렬된 첫 등장)
-            if "Δ15m:" in line and top15 is None:
-                top15 = sector
-            # 일간 자금 유입 섹터
-            if "Δ1d:" in line and "+" in line and top1d_in is None:
-                top1d_in = sector
-            # 일간 자금 유출 섹터
-            if "Δ1d:" in line and "-" in line and top1d_out is None:
-                top1d_out = sector
-        # 주도주 탐지 (energy= 라인 기준)
-        if "energy=" in line and leader is None:
-            leader = s.split()[0]
-    top15 = top15 or "시장"
-    top1d_in = top1d_in or "시장"
-    top1d_out = top1d_out or "시장"
-    leader = leader or "주도주 없음"
+        if "energy=" in line:
+            leader = line.strip().split()[0]
+            break
     summary = (
         f"현재 시간은 한국 기준 {tstr} 입니다. "
-        f"최근 15분 동안은 {top15} 섹터가 가장 강합니다. "
-        f"일간 기준으로는 {top1d_in} 섹터에 자금이 유입되고, "
-        f"{top1d_out} 섹터에서는 자금이 빠져나가고 있습니다. "
-        f"현재 주도주는 {leader} 입니다."
+        f"최근 15분 동안은 {top15['name']} 섹터가 가장 강하며 "
+        f"약 {fmt_money(top15['energy'])} 규모의 자금이 움직였습니다. "
+        f"일간 기준으로는 {top1d_in['name']} 섹터에 자금이 유입되고, "
+        f"{top1d_out['name']} 섹터에서는 자금이 빠져나가고 있습니다. "
+        f"현재 주도주는 {leader or '확인되지 않음'} 입니다."
     )
-    # summary 자체도 디버그 출력
+    # 디버그 출력
     print("===== DEBUG: voice summary result =====")
     print(summary)
-    print("===== DEBUG END =====\n")
+    print("===== DEBUG END =====")
     return summary
+
 
 # ----------------------------------------------------------
 # ② mp3 생성 (gTTS 사용)
