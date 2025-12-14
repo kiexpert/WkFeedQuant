@@ -35,10 +35,10 @@ def make_voice_summary(full_text: str) -> str:
             # 15분 기준 최강 섹터 (정렬된 첫 등장)
             if "Δ15m:" in line and top15 is None:
                 top15 = sector
-            # 일간 자금 유입 섹터 (정렬된 첫 등장)
-            if "Δ1d:" in line and top1d_in is None:
+            # 일간 자금 유입 섹터
+            if "Δ1d:" in line and "+" in line and top1d_in is None:
                 top1d_in = sector
-            # 일간 자금 유출 섹터 (Δ1d 음수 포함 라인)
+            # 일간 자금 유출 섹터
             if "Δ1d:" in line and "-" in line and top1d_out is None:
                 top1d_out = sector
         # 주도주 탐지 (energy= 라인 기준)
@@ -55,8 +55,11 @@ def make_voice_summary(full_text: str) -> str:
         f"{top1d_out} 섹터에서는 자금이 빠져나가고 있습니다. "
         f"현재 주도주는 {leader} 입니다."
     )
+    # summary 자체도 디버그 출력
+    print("===== DEBUG: voice summary result =====")
+    print(summary)
+    print("===== DEBUG END =====\n")
     return summary
-
 
 # ----------------------------------------------------------
 # ② mp3 생성 (gTTS 사용)
