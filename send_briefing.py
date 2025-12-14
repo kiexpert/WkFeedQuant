@@ -10,59 +10,52 @@ BRIEF = "briefing.txt"
 # ----------------------------------------------------------
 def make_voice_summary(full_text: str) -> str:
     from datetime import datetime, timedelta
-    def strip_ansi(s): return re.sub(r"\x1b\[[0-9;]*m","",s)
-    now_utc=datetime.utcnow(); now_kst=now_utc+timedelta(hours=9); tstr=now_kst.strftime("%Y-%m-%d %H시 %M분")
-    txt=strip_ansi(full_text).replace("\n\t","\t")
-    lines=txt.splitlines()
-    print("===== DEBUG: voice summary lines =====")
-    for i,l in enumerate(lines): print(f"{i:03d}: {l}")
-    print("===== DEBUG END =====")
-    rx_head=re.compile(r"^\s*(?P<name>[A-Za-z0-9 &+.-]+?)\s+(?P<energy>[0-9.]+)\s*MUSD")
-    rx_15=re.compile(r"Δ15m:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
-    rx_1d=re.compile(r"Δ1d:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
-    rx_leader=re.compile(r"^\s*([A-Z0-9._-]+)\s+energy=")
-    best15=-1e18; best1d=-1e18; worst1d=1e18
-    top15=None; top1d_in=None; top1d_out=None; leader=None
+    import re
+    now_kst = datetime.utcnow() + timedelta(hours=9)
+    tstr = now_kst.strftime("%Y-%m-%d %H시 %M분")
+    text = full_text.replace("\n\t", "\t")
+    lines = text.splitlines()
+    rx_head = re.compile(r"^\s*(?P<name>[A-Za-z][A-Za-z0-9 &+.-]+?)\s{2,}(?P<energy>[0-9.]+)\s*MUSD")
+    rx_15 = re.compile(r"Δ15m:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
+    rx_1d = re.compile(r"Δ1d:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
+    rx_leader = re.compile(r"^\s*([A-Z0-9]{2,6})\s+energy=")
+    sectors = []
+    leader = None
     for line in lines:
-        s=line.strip()
-        if not s: continue
+        m = rx_head.match(line)
+        if m:
+            name = m.group("name").strip()
+            energy = float(m.group("energy"))
+            d15 = rx_15.search(line)
+            d1d = rx_1d.search(line)
+            sectors.append({"name": name,"energy": energy,"d15": float(d15.group(2)) if d15 else None,"d15_sign": d15.group(1) if d15 else None,"d1d": float(d1d.group(2)) if d1d else None,"d1d_sign": d1d.group(1) if d1d else None})
+            continue
         if leader is None:
-            m=rx_leader.match(s)
-            if m: leader=m.group(1)
-        m=rx_head.match(line)
-        if not m: continue
-        name=m.group("name").strip()
-        energy=float(m.group("energy"))
-        m15=rx_15.search(line)
-        m1d=rx_1d.search(line)
-        if not m15 or not m1d: continue
-        d15=float(m15.group(2)); d15=-d15 if m15.group(1)=="-" else d15
-        d1=float(m1d.group(2)); d1=-d1 if m1d.group(1)=="-" else d1
-        if d15>best15: best15=d15; top15=(name,energy,d15)
-        if d1>best1d: best1d=d1; top1d_in=(name,energy,d1)
-        if d1<worst1d: worst1d=d1; top1d_out=(name,energy,d1)
-    if top15 is None: top15=("시장",None,None)
-    if top1d_in is None: top1d_in=("시장",None,None)
-    if top1d_out is None: top1d_out=("시장",None,None)
-    if leader is None: leader="주도주 없음"
-    def scale(v):
-        if v is None: return ""
-        return f"{v/1000:.1f}빌리언달러" if v>=1000 else f"{v:.0f}밀리언달러"
-    summary=(f"현재 시간은 한국 기준 {tstr} 입니다. "
-             f"최근 15분 동안은 {top15[0]} 섹터가 가장 강하며 {scale(top15[1])} 규모입니다. "
-             f"일간 기준으로는 {top1d_in[0]} 섹터로 자금이 유입되고, "
-             f"{top1d_out[0]} 섹터에서 자금이 빠져나가고 있습니다. "
-             f"현재 주도주는 {leader} 입니다.")
+            lm = rx_leader.match(line)
+            if lm:
+                leader = lm.group(1)
+    def money(v): return f"{v/1000:.1f}빌리언달러" if v >= 1000 else f"{v:.0f}밀리언달러"
+    top15 = None
+    top1d_in = None
+    top1d_out = None
+    for s in sectors:
+        if s["d15_sign"] == "+" and s["d15"] is not None:
+            if top15 is None or s["d15"] > top15["d15"]: top15 = s
+        if s["d1d_sign"] == "+" and s["d1d"] is not None:
+            if top1d_in is None or s["d1d"] > top1d_in["d1d"]: top1d_in = s
+        if s["d1d_sign"] == "-" and s["d1d"] is not None:
+            if top1d_out is None or s["d1d"] > top1d_out["d1d"]: top1d_out = s
+    if not top15: top15 = {"name": "시장","energy": 0}
+    if not top1d_in: top1d_in = {"name": "시장"}
+    if not top1d_out: top1d_out = {"name": "시장"}
+    if not leader: leader = "주도주 없음"
     print("===== DEBUG: voice summary picks =====")
-    print("top15=",top15)
-    print("top1d_in=",top1d_in)
-    print("top1d_out=",top1d_out)
-    print("leader=",leader)
+    print("top15=", top15)
+    print("top1d_in=", top1d_in)
+    print("top1d_out=", top1d_out)
+    print("leader=", leader)
     print("===== DEBUG END =====")
-    print("===== DEBUG: voice summary result =====")
-    print(summary)
-    print("===== DEBUG END =====")
-    return summary
+    return f"현재 시간은 한국 기준 {tstr} 입니다. 최근 15분 동안은 {top15['name']} 섹터가 가장 강하며 {money(top15['energy'])} 규모입니다. 일간 기준으로는 {top1d_in['name']} 섹터로 자금이 유입되고, {top1d_out['name']} 섹터에서 자금이 빠져나가고 있습니다. 현재 주도주는 {leader} 입니다."
 
 # ----------------------------------------------------------
 # ② mp3 생성 (gTTS 사용)
