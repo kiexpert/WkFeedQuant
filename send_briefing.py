@@ -48,7 +48,7 @@ def make_voice_summary(full_text:str)->str:
     print("leader=",leader)
     print("===== DEBUG END =====")
     summary=(
-        f"{tstr} 현재 {top15['name']} 섹터에 약 {scale(top15['d15'])}가 최근 15분 동안 가장 강하게 들어습니다. "
+        f"{tstr} 현재 {top15['name']} 섹터에 약 {scale(top15['d15'])}가 최근 15분 동안 가장 강하게 들어왔습니다. "
         f"오늘은 {top1d_in['name']} 섹터로 약 {scale(top1d_in['d1d'])} 들어오고, "
         f"{top1d_out['name']} 섹터에서는 약 {scale(top1d_out['d1d'])} 빠져나가고 있습니다. "
         f"현재 주도주는 {leader} 입니다."
