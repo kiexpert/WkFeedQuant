@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build-cache:
+  build-sector-weatcher:
     runs-on: ubuntu-latest
 
     env:
