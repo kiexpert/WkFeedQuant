@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "**/sector_weather.*"
+      - "**/send_briefing.*"
 
   schedule:
     - cron: "0 * * * *"   # 매시 정각 실행
