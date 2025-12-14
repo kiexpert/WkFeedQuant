@@ -15,9 +15,9 @@ def make_voice_summary(full_text: str) -> str:
     tstr = now_kst.strftime("%Y-%m-%d %H시 %M분")
     text = full_text.replace("\n\t", "\t")
     lines = text.splitlines()
-    rx_head = re.compile(r"^\s*(?P<name>[A-Za-z][A-Za-z0-9 &+.-]+?)\s{2,}(?P<energy>[0-9.]+)\s*MUSD")
-    rx_15 = re.compile(r"Δ15m:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
-    rx_1d = re.compile(r"Δ1d:\s*([+-])\s*[0-9.]+\s*/\s*([0-9.]+)%")
+    rx_head = re.compile(r"^\s*(?P<name>[A-Za-z][A-Za-z0-9 &+.-]+?)\s+(?P<energy>[0-9,]+(?:\.[0-9]+)?)\s*MUSD")
+    rx_15 = re.compile(r"Δ15m:\s*([+-])[0-9.,]+/([0-9.]+)%")
+    rx_1d = re.compile(r"Δ1d:\s*([+-])[0-9.,]+/([0-9.]+)%")
     rx_leader = re.compile(r"^\s*([A-Z0-9]{2,6})\s+energy=")
     sectors = []
     leader = None
@@ -25,7 +25,7 @@ def make_voice_summary(full_text: str) -> str:
         m = rx_head.match(line)
         if m:
             name = m.group("name").strip()
-            energy = float(m.group("energy"))
+            energy = float(m.group("energy").replace(",", ""))
             d15 = rx_15.search(line)
             d1d = rx_1d.search(line)
             sectors.append({"name": name,"energy": energy,"d15": float(d15.group(2)) if d15 else None,"d15_sign": d15.group(1) if d15 else None,"d1d": float(d1d.group(2)) if d1d else None,"d1d_sign": d1d.group(1) if d1d else None})
