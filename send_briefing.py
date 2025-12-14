@@ -21,14 +21,13 @@ def make_voice_summary(full_text:str)->str:
     for i,l in enumerate(lines):
         m=SECTOR_LINE_RE.search(l)
         if not m: continue
-        sec={
+        sectors.append({
             "name":m.group("name").strip(),
             "energy":float(m.group("energy").replace(',','')),
             "d15":float(m.group("d15")),
             "d1d":float(m.group("d1d")),
             "line":i
-        }
-        sectors.append(sec)
+        })
     print("===== DEBUG: parsed sectors =====")
     for s in sectors: print(s)
     print("===== DEBUG END =====")
@@ -41,19 +40,26 @@ def make_voice_summary(full_text:str)->str:
             leader=l.strip().split()[0]
             break
     def scale(v):
-        return f"{v/1000:.1f} 빌리언" if v>=1000 else f"{v:.0f} 밀리언"
+        return f"{v/1000:.1f} 빌리언달러" if abs(v)>=1000 else f"{abs(v):.0f} 밀리언달러"
     print("===== DEBUG: voice summary picks =====")
     print("top15=",top15)
     print("top1d_in=",top1d_in)
     print("top1d_out=",top1d_out)
     print("leader=",leader)
     print("===== DEBUG END =====")
-    return (
-        f"{tstr} {top15['name']} 섹터가 최근 15분 동안 가장 강하며 약 {scale(top15['energy'])} 달러 규모입니다. "
-        f"일간 기준으로는 {top1d_in['name']} 섹터로 자금이 유입되고, "
-        f"{top1d_out['name']} 섹터에서 자금이 빠져나가고 있습니다. "
+    summary=(
+        f"{tstr} 현재 {top15['name']} 섹터가 최근 15분 동안 가장 강하며 "
+        f"약 {scale(top15['d15'])} 규모의 자금이 유입되었습니다. "
+        f"일간 기준으로는 {top1d_in['name']} 섹터로 "
+        f"약 {scale(top1d_in['d1d'])} 규모의 자금이 유입되고, "
+        f"{top1d_out['name']} 섹터에서는 "
+        f"약 {scale(top1d_out['d1d'])} 규모의 자금이 빠져나가고 있습니다. "
         f"현재 주도주는 {leader} 입니다."
     )
+    print("===== DEBUG: final voice briefing =====")
+    print(summary)
+    print("===== DEBUG END =====")
+    return summary
 
 # ----------------------------------------------------------
 # ② mp3 생성 (gTTS 사용)
