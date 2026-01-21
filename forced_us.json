@@ -1,15 +1,9 @@
 {
-  "AMD": "AMD",
-  "ARKK": "ARK INNOVATION",
   "INTC": "인텔",
-  "NFLX": "넷플릭스",
-  "NKE": "나이키 B",
+  "NVDA": "엔비디아",
   "PYPL": "페이팔 홀딩스",
-  "QCOM": "퀄컴",
   "SOXL": "DIREXION SEMICONDUCTOR DAILY 3X",
-  "SQQQ": "PROSHARES QQQ -3X",
+  "TQQQ": "PROSHARES QQQ 3X",
   "UVXY": "PROSHARES VIX SHORT TERM FUTURES 1.5X",
-  "V": "비자",
-  "XLE": "SPDR ENERGY SELECT SECTOR",
-  "XLF": "SPDR FINANCIAL SELECT SECTOR"
+  "XLE": "SPDR ENERGY SELECT SECTOR"
 }
