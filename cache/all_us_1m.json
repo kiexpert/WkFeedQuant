@@ -1,6 +1,6 @@
 
 { "SPY": 
-{ "name": "SPDR S&P 500 ETF"
+{ "name": "State Street SPDR S&P 500 ETF Trust"
 , "symbol": "SPY"
 , "interval": "1m"
 , "rows": 77
