@@ -1,6 +1,12 @@
 {
+  "BABA": "알리바바 그룹 홀딩(ADR)",
   "INTC": "인텔",
+  "KORU": "DIREXION SOUTH KOREA DAILY 3X",
+  "NKE": "나이키 B",
+  "PYPL": "페이팔 홀딩스",
+  "QCOM": "퀄컴",
   "SOXL": "DIREXION SEMICONDUCTOR DAILY 3X",
+  "TQQQ": "PROSHARES QQQ 3X",
   "XLE": "SPDR ENERGY SELECT SECTOR",
   "XLF": "SPDR FINANCIAL SELECT SECTOR"
 }
