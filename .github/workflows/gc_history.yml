@@ -1,0 +1,49 @@
+name: GC History (Auto-commit 히스토리 정리)
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"   # 매주 일요일 00:00 UTC
+
+  workflow_dispatch:        # 수동 실행도 가능
+
+permissions:
+  contents: write
+
+jobs:
+  flatten:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Flatten history
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name "WkFeedQuant Bot"
+          git config user.email "action@github.com"
+
+          # 현재 커밋 수 확인
+          COUNT=$(git rev-list --count HEAD)
+          echo "현재 커밋 수: $COUNT"
+
+          # 20개 이하면 정리 불필요
+          if [ "$COUNT" -le 20 ]; then
+            echo "커밋이 적어서 정리 불필요"
+            exit 0
+          fi
+
+          # 현재 파일 상태를 그대로 유지한 orphan 브랜치 생성
+          git checkout --orphan fresh
+          git add -A
+          git commit -m "Reset history (was $COUNT commits)"
+
+          # main 교체
+          git branch -D main
+          git branch -m fresh main
+          git push -f origin main
+
+          echo "✅ $COUNT → 1 커밋으로 정리 완료"
