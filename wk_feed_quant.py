@@ -367,10 +367,18 @@ def run_feedquant():
                 buckets_idx[iv][cd]=item
                 _log(f"  ✔ IDX {cd} {iv}")
 
+    MIN_ITEMS = 5
     for iv in ivs:
-        _save_json(os.path.join(CACHE_DIR,f"all_kr_{iv}.json"),buckets_kr[iv])
-        _save_json(os.path.join(CACHE_DIR,f"all_us_{iv}.json"),buckets_us[iv])
-        _save_json(os.path.join(CACHE_DIR,f"all_ix_{iv}.json"),buckets_idx[iv])
+        for label, bucket, prefix in [
+            ("KR", buckets_kr[iv], "all_kr"),
+            ("US", buckets_us[iv], "all_us"),
+            ("IDX", buckets_idx[iv], "all_ix"),
+        ]:
+            path = os.path.join(CACHE_DIR, f"{prefix}_{iv}.json")
+            if len(bucket) < MIN_ITEMS:
+                _log(f"⚠️ {label} {iv} 데이터 부족({len(bucket)}개), 기존 캐시 유지")
+                continue
+            _save_json(path, bucket)
 
     _log("✅ 캐시 저장 완료")
 

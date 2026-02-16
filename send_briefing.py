@@ -28,9 +28,6 @@ def make_voice_summary(full_text:str)->str:
             "d1d":float(m.group("d1d")),
             "line":i
         })
-    print("===== DEBUG: parsed sectors =====")
-    for s in sectors: print(s)
-    print("===== DEBUG END =====")
     top15=max(sectors,key=lambda x:x["d15"],default=None)
     top1d_in=max(sectors,key=lambda x:x["d1d"],default=None)
     top1d_out=min(sectors,key=lambda x:x["d1d"],default=None)
@@ -41,21 +38,12 @@ def make_voice_summary(full_text:str)->str:
             break
     def scale(v):
         return f"{v/1000:.1f} 빌리언달러" if abs(v)>=1000 else f"{abs(v):.0f} 밀리언달러"
-    print("===== DEBUG: voice summary picks =====")
-    print("top15=",top15)
-    print("top1d_in=",top1d_in)
-    print("top1d_out=",top1d_out)
-    print("leader=",leader)
-    print("===== DEBUG END =====")
     summary=(
         f"{tstr} 현재 {top15['name']} 섹터에 약 {scale(top15['d15'])}가 최근 15분 동안 가장 강하게 들어왔습니다. "
         f"오늘은 {top1d_in['name']} 섹터로 약 {scale(top1d_in['d1d'])} 들어오고, "
         f"{top1d_out['name']} 섹터에서는 약 {scale(top1d_out['d1d'])} 빠져나가고 있습니다. "
         f"현재 주도주는 {leader} 입니다."
     )
-    print("===== DEBUG: final voice briefing =====")
-    print(summary)
-    print("===== DEBUG END =====")
     return summary
 
 # ----------------------------------------------------------
@@ -71,13 +59,22 @@ def make_mp3(text: str, out_path = "briefing.mp3"):
 # ③ 브리핑 전체 생성 + 전송
 # ----------------------------------------------------------
 def main():
-    os.system(f"python3 sector_weather.py > {BRIEF}")
+    # briefing.txt가 없으면 sector_weather.py 실행 (로컬 단독 실행 대비)
+    if not os.path.exists(BRIEF) or os.path.getsize(BRIEF) == 0:
+        import subprocess
+        result = subprocess.run(
+            ["python3", "sector_weather.py"],
+            capture_output=True, text=True, timeout=120
+        )
+        with open(BRIEF, "w", encoding="utf-8") as f:
+            f.write(result.stdout)
 
-    if not os.path.exists(BRIEF):
+    if not os.path.exists(BRIEF) or os.path.getsize(BRIEF) == 0:
         send_text("❗ 섹터 브리핑 파일이 생성되지 않았습니다.")
         return
 
-    msg = open(BRIEF, "r", encoding = "utf-8").read()
+    with open(BRIEF, "r", encoding="utf-8") as f:
+        msg = f.read()
 
     MAX = 3800
     if len(msg) <= MAX:
