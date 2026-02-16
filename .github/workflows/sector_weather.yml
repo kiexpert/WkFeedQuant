@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build-sector-weatcher:
+  build-sector-weather:
     runs-on: ubuntu-latest
 
     env:
@@ -54,28 +54,31 @@ jobs:
       - name: 📦 Install dependencies
         run: pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt | tail -n 9
 
-      # 6️⃣ Run FeedQuant + Sector Weather
+      # 6️⃣ Run Sector Weather
       - name: Run Sector Weather
         run: |
           git config user.name "WkFeedQuant Bot"
           git config user.email "action@github.com"
 
-          git fetch --all
-          git reset --hard origin/main
-
           # sector_weather.py → briefing.txt 생성
           python3 sector_weather.py | tee briefing.txt
 
-      # 9️⃣ 📡 Telegram briefing (정각 전송)
+      # 7️⃣ 📡 Telegram briefing (정각 전송)
       - name: 📡 Send Sector Briefing to Telegram
         run: python3 send_briefing.py
 
-      # 7️⃣ Commit & Push Cache
-      - name: Commit & Push Cache (Force)
+      # 8️⃣ Commit & Push
+      - name: Commit & Push Briefing
         run: |
-          git add -A
-          git commit -m "Auto cache update $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || true
-          git push -f origin HEAD:main
+          git add briefing.txt briefing.mp3 || true
+
+          git diff --cached --quiet && echo "No changes" && exit 0
+
+          git commit -m "Auto briefing update $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          # 웹 커밋이 있으면 rebase로 위에 쌓기 (롤백 방지)
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       # 8️⃣ Save cache snapshot
       - name: 💾 Save WillKimCache
