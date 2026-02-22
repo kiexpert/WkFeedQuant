@@ -6,8 +6,8 @@ on:
       - "**/sector_weather.*"
       - "**/send_briefing.*"
 
-  schedule:
-    - cron: "0 * * * *"   # 매시 정각 실행
+  # schedule:
+  #  - cron: "0 * * * *"   # 매시 정각 실행
 
   workflow_dispatch:
 
