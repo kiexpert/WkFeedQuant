@@ -6,11 +6,12 @@
   "BABA": "알리바바 그룹 홀딩(ADR)",
   "GOOG": "알파벳 C",
   "IWM": "ISHARES RUSSELL 2000",
+  "JPM": "제이피모간 체이스",
+  "NFLX": "넷플릭스",
   "ORCL": "오라클",
-  "QCOM": "퀄컴",
   "SOXL": "DIREXION SEMICONDUCTOR DAILY 3X",
   "TQQQ": "PROSHARES QQQ 3X",
-  "UVXY": "PROSHARES VIX SHORT TERM FUTURES 1.5X",
   "V": "비자",
-  "XLE": "SPDR ENERGY SELECT SECTOR"
+  "XLE": "SPDR ENERGY SELECT SECTOR",
+  "XLF": "SPDR FINANCIAL SELECT SECTOR"
 }
