@@ -1,0 +1,1 @@
+{"pdno": "INTC", "exchange": "NASD", "odno": "SIM-1777075774-4", "side": "SELL", "qty": 4, "price": 82.54, "timestamp": "2026-04-25T09:09:34.566177", "remain": 4, "qty_before": 7, "qty_order": 4, "qty_expected": 3, "simulated": true, "reason": "APBK0918"}
