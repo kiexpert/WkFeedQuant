@@ -1,0 +1,1 @@
+{"pdno": "SOXL", "exchange": "AMEX", "odno": "SIM-1777275137", "side": "SELL", "qty": 2, "price": 128.08, "timestamp": "2026-04-27T16:32:17.831615", "remain": 2, "qty_before": 5, "qty_order": 2, "qty_expected": 3, "simulated": true, "reason": "APBK0918"}
