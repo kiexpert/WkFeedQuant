@@ -1,6 +1,7 @@
 ﻿pending_us_git/
 .env
 *.secret
+cookies.txt
 cache/
 __pycache__/
 .wkappbot/

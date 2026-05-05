@@ -42,6 +42,26 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 YT_DIGEST_DIR = _REPO_ROOT / "wavevault" / "youtube_digest"
 INDEX_PATH = _REPO_ROOT / "youtube_digest.json"
 
+# Cookies file path resolved at startup. Workflow writes cookies.txt from
+# secrets.YOUTUBE_COOKIES then sets YTDLP_COOKIES_FILE=cookies.txt; CLI
+# --cookies-file overrides. Empty/missing → run without cookies.
+_COOKIES_FILE: str | None = None
+
+
+def _resolve_cookies_file(cli_value: str | None) -> str | None:
+    """Pick CLI arg over env var; only return if file actually exists & non-empty."""
+    candidate = cli_value or os.environ.get("YTDLP_COOKIES_FILE", "").strip() or None
+    if not candidate:
+        return None
+    p = Path(candidate)
+    if not p.is_absolute():
+        p = (_REPO_ROOT / p).resolve()
+    if not p.is_file() or p.stat().st_size == 0:
+        print(f"[cookies] {candidate} not found or empty; running without cookies", flush=True)
+        return None
+    print(f"[cookies] using {p}", flush=True)
+    return str(p)
+
 # ============================================================
 # Channel Registry — mirror of WkAutoQuant scripts/fetch_youtube_digest.py
 # Keep slugs identical so consumers can map 1:1.
@@ -127,6 +147,8 @@ def fetch_latest_vtt(
         "--extractor-args", "youtube:player_client=tv,web_safari,android",
         "-o", out_template,
     ]
+    if _COOKIES_FILE:
+        cmd += ["--cookies", _COOKIES_FILE]
     if min_dur > 0:
         cmd += ["--match-filter", f"duration > {min_dur}"]
     cmd.append(channel["url"])
@@ -159,6 +181,8 @@ def fetch_latest_vtt(
         "--playlist-end", "1",
         "--extractor-args", "youtube:player_client=tv,web_safari,android",
     ]
+    if _COOKIES_FILE:
+        meta_cmd += ["--cookies", _COOKIES_FILE]
     if min_dur > 0:
         meta_cmd += ["--match-filter", f"duration > {min_dur}"]
     meta_cmd.append(channel["url"])
@@ -238,7 +262,15 @@ def main() -> int:
     p.add_argument("--channel", "-c", help="Process a single channel by slug")
     p.add_argument("--timeout", type=int, default=90, help="yt-dlp per-channel timeout (sec)")
     p.add_argument("--list", action="store_true", help="List configured channel slugs")
+    p.add_argument(
+        "--cookies-file",
+        help="Netscape-format cookies.txt for yt-dlp (overrides $YTDLP_COOKIES_FILE). "
+             "Used to bypass YouTube bot detection on data-center IPs (GHA runners).",
+    )
     args = p.parse_args()
+
+    global _COOKIES_FILE
+    _COOKIES_FILE = _resolve_cookies_file(args.cookies_file)
 
     if args.list:
         for ch in CHANNELS:
