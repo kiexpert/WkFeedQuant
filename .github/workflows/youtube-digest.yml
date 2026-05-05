@@ -1,0 +1,82 @@
+name: YouTube Digest
+
+# Daily YouTube subtitle digest for ~22 Korean stock-market channels.
+# Offloads heavy yt-dlp from the local WkAutoQuant briefing bot (was freezing the host).
+# Outputs: wavevault/youtube_digest/<YYYY-MM-DD>_<slug>.txt + youtube_digest.json
+
+on:
+  schedule:
+    # 09:00 KST = 00:00 UTC, daily
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Single channel slug (blank = all)"
+        required: false
+        default: ""
+      timeout:
+        description: "Per-channel yt-dlp timeout (seconds)"
+        required: false
+        default: "90"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: youtube-digest
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install yt-dlp
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade yt-dlp
+
+      - name: Run YouTube digest
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.channel }}" ]; then
+            ARGS="$ARGS --channel ${{ github.event.inputs.channel }}"
+          fi
+          if [ -n "${{ github.event.inputs.timeout }}" ]; then
+            ARGS="$ARGS --timeout ${{ github.event.inputs.timeout }}"
+          fi
+          python scripts/youtube_digest.py $ARGS
+
+      - name: Commit & Push results
+        run: |
+          git config user.name  "WkFeedQuant Bot"
+          git config user.email "action@github.com"
+          git add youtube_digest.json wavevault/youtube_digest/ || true
+          if git diff --cached --quiet; then
+            echo "[git] no changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(youtube-digest): refresh transcripts $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          # Pull-rebase to avoid clobbering parallel commits from sibling workflows.
+          git pull --rebase origin main || true
+          git push origin HEAD:main
+
+      - name: Upload artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-digest-${{ github.run_id }}
+          path: |
+            youtube_digest.json
+            wavevault/youtube_digest/
+          if-no-files-found: ignore
+          retention-days: 14
