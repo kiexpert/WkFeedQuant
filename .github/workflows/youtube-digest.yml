@@ -45,7 +45,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --upgrade yt-dlp
 
+      - name: Write YouTube cookies (bypass bot detection on data-center IPs)
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
+            echo "[cookies] wrote $(wc -l < cookies.txt) lines to cookies.txt"
+          else
+            echo "[cookies] YOUTUBE_COOKIES secret is empty; skipping (yt-dlp will run without cookies)"
+          fi
+
       - name: Run YouTube digest
+        env:
+          YTDLP_COOKIES_FILE: cookies.txt
         run: |
           ARGS=""
           if [ -n "${{ github.event.inputs.channel }}" ]; then
@@ -55,6 +68,10 @@ jobs:
             ARGS="$ARGS --timeout ${{ github.event.inputs.timeout }}"
           fi
           python scripts/youtube_digest.py $ARGS
+
+      - name: Cleanup cookies (defense-in-depth; .gitignore already blocks it)
+        if: always()
+        run: rm -f cookies.txt
 
       - name: Commit & Push results
         run: |
