@@ -87,6 +87,31 @@ jobs:
           git pull --rebase origin main || true
           git push origin HEAD:main
 
+      - name: Cross-push digests to WkAutoQuant
+        if: success()
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "[cross-push] GH_PAT secret missing, skipping"; exit 0
+          fi
+          if [ ! -d wavevault/youtube_digest ]; then
+            echo "[cross-push] no digest dir, skipping"; exit 0
+          fi
+          git clone --depth=1 "https://x-access-token:${GH_PAT}@github.com/kiexpert/WkAutoQuant.git" /tmp/wkaq
+          mkdir -p /tmp/wkaq/wavevault/youtube_digest
+          cp -r wavevault/youtube_digest/. /tmp/wkaq/wavevault/youtube_digest/
+          cd /tmp/wkaq
+          git config user.name  "WkFeedQuant Bot"
+          git config user.email "action@github.com"
+          git add wavevault/youtube_digest/ || true
+          if git diff --cached --quiet; then
+            echo "[cross-push] no changes for WkAutoQuant"; exit 0
+          fi
+          git commit -m "chore(youtube-digest): refresh from WkFeedQuant GHA $(date -u +'%Y-%m-%dT%H:%M:%SZ') [skip ci]"
+          git pull --rebase origin main || true
+          git push origin HEAD:main
+
       - name: Upload artifact (backup)
         if: always()
         uses: actions/upload-artifact@v4
