@@ -1,0 +1,7 @@
+﻿pending_us_git/
+.env
+*.secret
+cache/
+__pycache__/
+.wkappbot/
+wavevault/
