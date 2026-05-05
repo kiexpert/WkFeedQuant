@@ -121,6 +121,10 @@ def fetch_latest_vtt(
         "--skip-download",
         "--sub-format", "vtt",
         "--playlist-end", "1",
+        # Use the TV/web-safari player clients to dodge "Sign in to confirm you're
+        # not a bot" on data-center IPs (GitHub Actions runners get flagged a lot).
+        # Order matters — yt-dlp tries each until one returns a usable response.
+        "--extractor-args", "youtube:player_client=tv,web_safari,android",
         "-o", out_template,
     ]
     if min_dur > 0:
@@ -153,6 +157,7 @@ def fetch_latest_vtt(
         *_YTDLP_CMD, "--skip-download",
         "--print", "%(id)s|||%(upload_date)s",
         "--playlist-end", "1",
+        "--extractor-args", "youtube:player_client=tv,web_safari,android",
     ]
     if min_dur > 0:
         meta_cmd += ["--match-filter", f"duration > {min_dur}"]
