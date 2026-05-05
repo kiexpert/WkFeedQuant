@@ -1,4 +1,4 @@
-name: YouTube Digest
+name: 📺 YouTube 유튜브 다이제스트 (매일 09:00 KST)
 
 # Daily YouTube subtitle digest for ~22 Korean stock-market channels.
 # Offloads heavy yt-dlp from the local WkAutoQuant briefing bot (was freezing the host).
