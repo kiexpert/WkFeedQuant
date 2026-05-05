@@ -137,7 +137,10 @@ def fetch_latest_vtt(
         print(f"[TIMEOUT] {slug}: exceeded {timeout}s", flush=True)
         return None, None, None
     if r.returncode != 0:
-        print(f"[ERROR] {slug}: yt-dlp rc={r.returncode}: {(r.stderr or '')[:200]}", flush=True)
+        # Print full stderr (cap at ~2KB) so the real failure (player decryption,
+        # 403, missing format) isn't hidden behind the leading JS-runtime warning.
+        err = (r.stderr or "").strip()
+        print(f"[ERROR] {slug}: yt-dlp rc={r.returncode}: {err[:2000]}", flush=True)
         return None, None, None
 
     vtt_path = os.path.join(work_dir, f"{slug}.ko.vtt")
