@@ -5,3 +5,8 @@ cache/
 __pycache__/
 .wkappbot/
 wavevault/
+# Allow GHA-published YouTube transcripts to ship in commits (consumed by WkAutoQuant
+# briefing bot via raw.githubusercontent.com). Workflow: .github/workflows/youtube-digest.yml
+!wavevault/
+!wavevault/youtube_digest/
+!wavevault/youtube_digest/**

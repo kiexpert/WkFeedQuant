@@ -36,6 +36,9 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+# NOTE: wavevault/ is .gitignored as a whole, but we negate wavevault/youtube_digest/
+# in .gitignore so the per-channel transcripts can ship in commits. Consumers fetch
+# via entry["path"] from youtube_digest.json — that path string is the source of truth.
 YT_DIGEST_DIR = _REPO_ROOT / "wavevault" / "youtube_digest"
 INDEX_PATH = _REPO_ROOT / "youtube_digest.json"
 
@@ -119,11 +122,10 @@ def fetch_latest_vtt(
         "--sub-format", "vtt",
         "--playlist-end", "1",
         "-o", out_template,
-        channel["url"],
     ]
     if min_dur > 0:
-        cmd.insert(-2, "--match-filter")
-        cmd.insert(-2, f"duration > {min_dur}")
+        cmd += ["--match-filter", f"duration > {min_dur}"]
+    cmd.append(channel["url"])
 
     print(f"[FETCH] {slug}: yt-dlp ...", flush=True)
     try:
@@ -148,11 +150,10 @@ def fetch_latest_vtt(
         *_YTDLP_CMD, "--skip-download",
         "--print", "%(id)s|||%(upload_date)s",
         "--playlist-end", "1",
-        channel["url"],
     ]
     if min_dur > 0:
-        meta_cmd.insert(-2, "--match-filter")
-        meta_cmd.insert(-2, f"duration > {min_dur}")
+        meta_cmd += ["--match-filter", f"duration > {min_dur}"]
+    meta_cmd.append(channel["url"])
     vid_id, upload_date = None, None
     try:
         m = subprocess.run(
