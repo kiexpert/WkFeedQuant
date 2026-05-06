@@ -1,0 +1,65 @@
+name: 📊 Repository Metrics Export
+
+on:
+  schedule:
+    # 08:30 KST daily
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+    inputs:
+      light:
+        description: "Skip heavier stats endpoints"
+        required: false
+        default: "false"
+      limit:
+        description: "Limit number of repos for testing; 0 = all"
+        required: false
+        default: "0"
+  push:
+    paths:
+      - ".github/workflows/repo-metrics.yml"
+      - "scripts/collect_repo_metrics.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repo-metrics-export
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect metrics and push to private target
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          METRICS_OWNER: kiexpert
+          METRICS_TARGET_REPO: kiexpert/WkAutoQuant
+          METRICS_TARGET_PREFIX: wavevault/github_traffic
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.light }}" = "true" ]; then
+            ARGS="$ARGS --light"
+          fi
+          if [ -n "${{ github.event.inputs.limit }}" ] && [ "${{ github.event.inputs.limit }}" != "0" ]; then
+            ARGS="$ARGS --limit ${{ github.event.inputs.limit }}"
+          fi
+          python scripts/collect_repo_metrics.py $ARGS
+
+      - name: Upload local backup artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-metrics-${{ github.run_id }}
+          path: _repo_metrics/
+          if-no-files-found: ignore
+          retention-days: 14
