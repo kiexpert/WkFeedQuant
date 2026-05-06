@@ -14,6 +14,7 @@ on:
     paths:
       - ".github/workflows/youtube-digest.yml"
       - "scripts/youtube_digest.py"
+      - "scripts/youtube_digest_plus.py"
   workflow_dispatch:
     inputs:
       channel:
@@ -80,7 +81,7 @@ jobs:
           if [ -n "${{ github.event.inputs.timeout }}" ]; then
             ARGS="$ARGS --timeout ${{ github.event.inputs.timeout }}"
           fi
-          python scripts/youtube_digest.py $ARGS
+          python scripts/youtube_digest_plus.py $ARGS
           python - <<'PY'
           import json, pathlib
           p = pathlib.Path('youtube_digest.json')
@@ -89,6 +90,7 @@ jobs:
           d = json.loads(p.read_text(encoding='utf-8'))
           print('[digest-summary]', d.get('success_count'), '/', d.get('channel_count'), 'ok')
           print('[digest-shorts]', d.get('shorts_success_count'), '/', d.get('shorts_channel_count'), 'ok')
+          print('[digest-stockcrazypeople]', d.get('stockcrazypeople'))
           PY
 
       - name: Cleanup cookies
