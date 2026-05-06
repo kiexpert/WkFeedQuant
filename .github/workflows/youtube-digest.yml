@@ -28,8 +28,6 @@ on:
 permissions:
   contents: write
 
-actions_permissions: {}
-
 concurrency:
   group: youtube-digest
   cancel-in-progress: false
