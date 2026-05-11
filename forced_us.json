@@ -1,8 +1,19 @@
 {
+  "AAPL": "애플",
+  "ARKK": "ARK INNOVATION",
+  "BA": "보잉",
+  "BABA": "알리바바 그룹 홀딩(ADR)",
   "CAR": "에이비스 버짓 그룹",
+  "IWM": "ISHARES RUSSELL 2000",
+  "JPM": "제이피모간 체이스",
   "KORU": "한국 3배 레버리지 ETF",
   "LCI1": "LCI 인더스트리즈",
   "MAS": "매스코",
+  "NFLX": "넷플릭스",
   "POET": "포엣 테크놀로지스",
-  "SOXS": "미국 반도체 인버스 3배 ETF"
+  "SOXS": "미국 반도체 인버스 3배 ETF",
+  "TQQQ": "PROSHARES QQQ 3X",
+  "TSLA": "테슬라",
+  "UVXY": "PROSHARES VIX SHORT TERM FUTURES 1.5X",
+  "XLE": "SPDR ENERGY SELECT SECTOR"
 }
