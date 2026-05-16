@@ -90,9 +90,25 @@ jobs:
             echo "hits=${HITS}"
 
             if [ "$HITS" -gt 0 ] && [ -n "$ISSUE_NUMBER" ]; then
-              TS="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              gh issue comment "$ISSUE_NUMBER" --repo kiexpert/WkAutoQuant --body "hits=${HITS} timestamp=${TS}" >/dev/null || echo "comment failed"
+              HIT_DETAIL=$(grep -A 4 '매집선행물리 HIT' /tmp/out.txt | sed 's/^/  /' || true)
+              TS="$(date -u +'%H:%M')"
+              gh issue comment "$ISSUE_NUMBER" --repo kiexpert/WkAutoQuant --body "$(cat <<EOF
+**🎯 매집선행물리 relay** \`${TS} UTC\` hits=${HITS}
+
+\`\`\`
+${HIT_DETAIL}
+\`\`\`
+EOF
+)" >/dev/null || echo "comment failed"
             fi
 
-            sleep 60
+            REMAINING=$((DEADLINE - $(date +%s)))
+            if [ "$REMAINING" -le 0 ]; then
+              break
+            fi
+            if [ "$REMAINING" -gt 60 ]; then
+              sleep 60
+            else
+              sleep "$REMAINING"
+            fi
           done
