@@ -3,6 +3,12 @@ name: maejip_feedquant_relay
 on:
   schedule:
     - cron: "0,20,40 0-6 * * 1-5"
+    - cron: '0,20,40 8 * * 1-5'
+    - cron: '0,20,40 9 * * 1-5'
+    - cron: '0,20,40 10 * * 1-5'
+    - cron: '0,20,40 11 * * 1-5'
+    - cron: '0,20,40 12 * * 1-5'
+    - cron: '0,20,40 13 * * 1-5'
     - cron: '30,50 14 * * 1-5'
     - cron: '10,30,50 15 * * 1-5'
     - cron: '10,30,50 16 * * 1-5'
@@ -28,6 +34,7 @@ env:
   SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
   PYTHONUTF8: "1"
   PYTHONPATH: "${{ github.workspace }}/wkaq/scripts"
+  MAEJIP_RELAY_MODE: "1"
 
 jobs:
   relay:
@@ -69,7 +76,7 @@ jobs:
           if [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ]; then
             MARKET=KR
             SCREENER='scripts/maejip_realtime_screener.py --cap 2000'
-          elif [ "$HOUR" -ge 14 ] && [ "$HOUR" -le 21 ]; then
+          elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then
             MARKET=US
             SCREENER='scripts/maejip_us_screener.py --cap 100'
           else
@@ -95,6 +102,13 @@ jobs:
             if [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
               printf '\n[handoff] new daemon detected\n'
               break
+            fi
+
+            # Refresh KR token per iteration -- prevents stale token after 18 min
+            if [ "$MARKET" = "KR" ]; then
+              git -C "$GITHUB_WORKSPACE/wkaq" fetch --depth 1 origin main --quiet 2>/dev/null || true
+              FRESH=$(git -C "$GITHUB_WORKSPACE/wkaq" show FETCH_HEAD:wavevault/hantoo_cache/hantoo_token_kr.json 2>/dev/null || true)
+              [ -n "$FRESH" ] && echo "$FRESH" > ~/.wk-cache/hantoo/hantoo_token_kr.json && echo "[token] refreshed" || true
             fi
 
             printf '%s ' "$(date -u +'%H:%M')"
