@@ -61,6 +61,12 @@ jobs:
           cd $WKAQ
           python scripts/fetch_naver_signals.py --from-convergence 2>&1 | tail -8
 
+      - name: Post news summary to daily issue
+        continue-on-error: true
+        run: |
+          cd $WKAQ
+          python scripts/post_news_to_issue.py 2>&1 | tail -5
+
       - name: Commit & push results to WkAutoQuant
         run: |
           cd $WKAQ
