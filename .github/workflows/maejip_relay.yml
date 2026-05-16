@@ -4,12 +4,6 @@ on:
   schedule:
     - cron: "0,20,40 0-6 * * 1-5"
   workflow_dispatch:
-    inputs:
-      force:
-        description: Bypass the market-hours gate
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -34,19 +28,20 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/setup-python@v5
+      - name: setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Clone WkAutoQuant
-        run: git clone https://x-access-token:${GH_TOKEN}@github.com/kiexpert/WkAutoQuant.git wkaq
+      - name: clone wkaq
+        run: git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/kiexpert/WkAutoQuant.git wkaq
 
-      - name: Install dependencies
+      - name: pip install quiet
         run: |
-          python -m pip install --upgrade pip
-          pip install -r wkaq/requirements.txt
+          python -m pip install --upgrade pip -q
+          pip install -q -r wkaq/requirements.txt
 
-      - name: Restore Hantoo KR token cache
+      - name: restore hantoo token
         run: |
           mkdir -p ~/.wk-cache/hantoo
           if [ -f wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ]; then
@@ -55,52 +50,78 @@ jobs:
 
       - name: Run 18-minute daemon
         working-directory: wkaq
-        env:
-          FORCE: ${{ inputs.force }}
         run: |
-          if [ "${FORCE:-false}" != "true" ]; then
-            case "$(date -u +%u)" in
-              1|2|3|4|5) ;;
-              *)
-                echo "Outside KR market hours"
-                exit 0
-                ;;
-            esac
+          set -euo pipefail
 
-            HOUR=$((10#$(date -u +%H)))
-            if [ "$HOUR" -gt 6 ]; then
-              echo "Outside KR market hours"
-              exit 0
-            fi
+          case "$(date -u +%u)" in
+            1|2|3|4|5) ;;
+            *) exit 0 ;;
+          esac
+
+          HOUR=$((10#$(date -u +%H)))
+          if [ "$HOUR" -gt 6 ]; then
+            exit 0
           fi
 
-          ISSUE_NUMBER="$(gh issue list --repo kiexpert/WkAutoQuant --state open --label daily --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)"
-          if [ -z "$ISSUE_NUMBER" ] || [ "$ISSUE_NUMBER" = "null" ]; then
-            echo "No open daily issue found; comment posting will be skipped"
-            ISSUE_NUMBER=""
+          gh variable set MAEJIP_ACTIVE_RUN --repo kiexpert/WkFeedQuant --body "$GITHUB_RUN_ID" >/dev/null
+
+          ISSUE="$(gh issue list --repo kiexpert/WkAutoQuant --state open --label daily --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)"
+          if [ "$ISSUE" = "null" ] || [ -z "$ISSUE" ]; then
+            ISSUE=""
           fi
 
-          START=$(date +%s)
-          DEADLINE=$((START + 18 * 60))
+          DEADLINE=$(( $(date +%s) + 18 * 60 ))
+          ROUNDS=0
 
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            python scripts/maejip_realtime_screener.py --cap 2000 > /tmp/out.txt 2>&1 || true
+            ACTIVE="$(gh api repos/kiexpert/WkFeedQuant/actions/variables/MAEJIP_ACTIVE_RUN --jq .value 2>/dev/null || echo "$GITHUB_RUN_ID")"
+            if [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
+              printf '\n[handoff] new daemon detected\n'
+              break
+            fi
+
+            printf '%s ' "$(date -u +'%H:%M')"
+
+            : > /tmp/out.txt
+            python scripts/maejip_realtime_screener.py --cap 2000 > /tmp/out.txt 2>&1 &
+            SCAN_PID=$!
+
+            SEEN=0
+            while kill -0 "$SCAN_PID" 2>/dev/null; do
+              sleep 1
+
+              CURRENT_LINES="$(wc -l < /tmp/out.txt 2>/dev/null || printf '0')"
+              if [ "$CURRENT_LINES" -gt "$SEEN" ]; then
+                NEW_BLOCK="$(sed -n "$((SEEN + 1)),$CURRENT_LINES p" /tmp/out.txt 2>/dev/null || true)"
+                NEW_HITS="$(printf '%s\n' "$NEW_BLOCK" | grep -c 'HIT' 2>/dev/null || true)"
+                SEEN="$CURRENT_LINES"
+                if [ "$NEW_HITS" -gt 0 ]; then
+                  HIT_DIGIT="$NEW_HITS"
+                  if [ "$HIT_DIGIT" -gt 9 ]; then
+                    HIT_DIGIT=9
+                  fi
+                  printf '%s' "$HIT_DIGIT"
+                else
+                  printf '.'
+                fi
+              else
+                printf '.'
+              fi
+            done
+
+            wait "$SCAN_PID" 2>/dev/null || true
+            echo
+
             HITS="$(grep -c 'HIT' /tmp/out.txt 2>/dev/null || true)"
             HITS="${HITS:-0}"
-            echo "hits=${HITS}"
 
-            if [ "$HITS" -gt 0 ] && [ -n "$ISSUE_NUMBER" ]; then
-              HIT_DETAIL=$(grep -A 4 '매집선행물리 HIT' /tmp/out.txt | sed 's/^/  /' || true)
-              TS="$(date -u +'%H:%M')"
-              gh issue comment "$ISSUE_NUMBER" --repo kiexpert/WkAutoQuant --body "$(cat <<EOF
-**🎯 매집선행물리 relay** \`${TS} UTC\` hits=${HITS}
-
-\`\`\`
-${HIT_DETAIL}
-\`\`\`
-EOF
-)" >/dev/null || echo "comment failed"
+            if [ "$HITS" -gt 0 ] && [ -n "$ISSUE" ]; then
+              HIT_DETAIL="$(grep -A 4 'HIT' /tmp/out.txt 2>/dev/null || true)"
+              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**maejip relay** hits=${HITS}" "$HIT_DETAIL")"
+              gh issue comment "$ISSUE" --repo kiexpert/WkAutoQuant --body "$COMMENT_BODY" >/dev/null 2>&1 || true
             fi
+
+            ROUNDS=$((ROUNDS + 1))
 
             REMAINING=$((DEADLINE - $(date +%s)))
             if [ "$REMAINING" -le 0 ]; then
@@ -112,3 +133,5 @@ EOF
               sleep "$REMAINING"
             fi
           done
+
+          echo "[relay] done after $ROUNDS rounds"
