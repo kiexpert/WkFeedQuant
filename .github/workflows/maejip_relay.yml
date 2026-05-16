@@ -1,0 +1,98 @@
+name: maejip_feedquant_relay
+
+on:
+  schedule:
+    - cron: "0,20,40 0-6 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Bypass the market-hours gate
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maejip-feedquant-relay
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GH_PAT }}
+  HANTOO_APPKEY_KR: ${{ secrets.HANTOO_APPKEY_KR }}
+  HANTOO_APPSECRET_KR: ${{ secrets.HANTOO_APPSECRET_KR }}
+  HANTOO_ACCOUNTNO_KR: ${{ secrets.HANTOO_ACCOUNTNO_KR }}
+  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+  PYTHONUTF8: "1"
+  PYTHONPATH: "${{ github.workspace }}/wkaq/scripts"
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Clone WkAutoQuant
+        run: git clone https://x-access-token:${GH_TOKEN}@github.com/kiexpert/WkAutoQuant.git wkaq
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r wkaq/requirements.txt
+
+      - name: Restore Hantoo KR token cache
+        run: |
+          mkdir -p ~/.wk-cache/hantoo
+          if [ -f wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ]; then
+            cp wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ~/.wk-cache/hantoo/
+          fi
+
+      - name: Run 18-minute daemon
+        working-directory: wkaq
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "${FORCE:-false}" != "true" ]; then
+            case "$(date -u +%u)" in
+              1|2|3|4|5) ;;
+              *)
+                echo "Outside KR market hours"
+                exit 0
+                ;;
+            esac
+
+            HOUR=$((10#$(date -u +%H)))
+            if [ "$HOUR" -gt 6 ]; then
+              echo "Outside KR market hours"
+              exit 0
+            fi
+          fi
+
+          ISSUE_NUMBER="$(gh issue list --repo kiexpert/WkAutoQuant --state open --label daily --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)"
+          if [ -z "$ISSUE_NUMBER" ] || [ "$ISSUE_NUMBER" = "null" ]; then
+            echo "No open daily issue found; comment posting will be skipped"
+            ISSUE_NUMBER=""
+          fi
+
+          START=$(date +%s)
+          DEADLINE=$((START + 18 * 60))
+
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            python scripts/maejip_realtime_screener.py --cap 2000 > /tmp/out.txt 2>&1 || true
+            HITS="$(grep -c 'HIT' /tmp/out.txt 2>/dev/null || true)"
+            HITS="${HITS:-0}"
+            echo "hits=${HITS}"
+
+            if [ "$HITS" -gt 0 ] && [ -n "$ISSUE_NUMBER" ]; then
+              TS="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              gh issue comment "$ISSUE_NUMBER" --repo kiexpert/WkAutoQuant --body "hits=${HITS} timestamp=${TS}" >/dev/null || echo "comment failed"
+            fi
+
+            sleep 60
+          done
