@@ -3,6 +3,13 @@ name: maejip_feedquant_relay
 on:
   schedule:
     - cron: "0,20,40 0-6 * * 1-5"
+    - cron: '30,50 14 * * 1-5'
+    - cron: '10,30,50 15 * * 1-5'
+    - cron: '10,30,50 16 * * 1-5'
+    - cron: '10,30,50 17 * * 1-5'
+    - cron: '10,30,50 18 * * 1-5'
+    - cron: '10,30,50 19 * * 1-5'
+    - cron: '10,30,50 20 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -58,12 +65,22 @@ jobs:
             *) exit 0 ;;
           esac
 
-          HOUR=$((10#$(date -u +%H)))
-          if [ "$HOUR" -gt 6 ]; then
+          HOUR=$(date -u +%H | sed 's/^0//')
+          if [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ]; then
+            MARKET=KR
+            SCREENER='scripts/maejip_realtime_screener.py --cap 2000'
+          elif [ "$HOUR" -ge 14 ] && [ "$HOUR" -le 21 ]; then
+            MARKET=US
+            SCREENER='scripts/maejip_us_screener.py --cap 100'
+          else
+            echo 'no market open'
             exit 0
           fi
 
-          gh variable set MAEJIP_ACTIVE_RUN --repo kiexpert/WkFeedQuant --body "$GITHUB_RUN_ID" >/dev/null
+          echo "[market] $MARKET"
+
+          ACTIVE_VAR="MAEJIP_ACTIVE_${MARKET}_RUN"
+          gh variable set "$ACTIVE_VAR" --repo kiexpert/WkFeedQuant --body "$GITHUB_RUN_ID" >/dev/null
 
           ISSUE="$(gh issue list --repo kiexpert/WkAutoQuant --state open --label daily --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)"
           if [ "$ISSUE" = "null" ] || [ -z "$ISSUE" ]; then
@@ -74,7 +91,7 @@ jobs:
           ROUNDS=0
 
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            ACTIVE="$(gh api repos/kiexpert/WkFeedQuant/actions/variables/MAEJIP_ACTIVE_RUN --jq .value 2>/dev/null || echo "$GITHUB_RUN_ID")"
+            ACTIVE="$(gh api "repos/kiexpert/WkFeedQuant/actions/variables/$ACTIVE_VAR" --jq .value 2>/dev/null || echo "$GITHUB_RUN_ID")"
             if [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
               printf '\n[handoff] new daemon detected\n'
               break
@@ -83,7 +100,7 @@ jobs:
             printf '%s ' "$(date -u +'%H:%M')"
 
             : > /tmp/out.txt
-            python scripts/maejip_realtime_screener.py --cap 2000 > /tmp/out.txt 2>&1 &
+            python $SCREENER > /tmp/out.txt 2>&1 &
             SCAN_PID=$!
 
             SEEN=0
@@ -117,7 +134,7 @@ jobs:
 
             if [ "$HITS" -gt 0 ] && [ -n "$ISSUE" ]; then
               HIT_DETAIL="$(grep -A 4 'HIT' /tmp/out.txt 2>/dev/null || true)"
-              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**maejip relay** hits=${HITS}" "$HIT_DETAIL")"
+              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**$(printf '\xF0\x9F\x8E\xAF') 매집선행물리 relay [$MARKET]** hits=${HITS}" "$HIT_DETAIL")"
               gh issue comment "$ISSUE" --repo kiexpert/WkAutoQuant --body "$COMMENT_BODY" >/dev/null 2>&1 || true
             fi
 
