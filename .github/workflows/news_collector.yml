@@ -1,0 +1,78 @@
+name: "News & Signal Collector (2h)"
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"   # every 2 hours, 24/7
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN:            ${{ secrets.GH_PAT }}
+  HANTOO_APPKEY_KR:    ${{ secrets.HANTOO_APPKEY_KR }}
+  HANTOO_APPSECRET_KR: ${{ secrets.HANTOO_APPSECRET_KR }}
+  HANTOO_ACCOUNTNO_KR: ${{ secrets.HANTOO_ACCOUNTNO_KR }}
+  HANTOO_APPKEY_US:    ${{ secrets.HANTOO_APPKEY_US }}
+  HANTOO_APPSECRET_US: ${{ secrets.HANTOO_APPSECRET_US }}
+  HANTOO_ACCOUNTNO_US: ${{ secrets.HANTOO_ACCOUNTNO_US }}
+  SLACK_BOT_TOKEN:     ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL:       ${{ secrets.SLACK_CHANNEL }}
+  MAEJIP_RELAY_MODE:   "1"
+  PYTHONUTF8:          "1"
+  PYTHONIOENCODING:    "utf-8"
+
+jobs:
+  collect:
+    name: "News & Signal 2h Collect"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Clone WkAutoQuant (private)
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.GH_PAT }}@github.com/kiexpert/WkAutoQuant.git" \
+            wkaq
+          echo "WKAQ=$GITHUB_WORKSPACE/wkaq" >> $GITHUB_ENV
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/wkaq/scripts" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install deps
+        run: pip install --quiet -r $WKAQ/requirements.txt
+
+      - name: Restore Hantoo token
+        run: |
+          mkdir -p ~/.wk-cache/hantoo
+          SRC="$WKAQ/wavevault/hantoo_cache/hantoo_token_kr.json"
+          [ -f "$SRC" ] && cp "$SRC" ~/.wk-cache/hantoo/ && echo "[token] restored" || true
+
+      - name: Collect market data (indices, FeedQuant cache)
+        continue-on-error: true
+        run: |
+          cd $WKAQ
+          python scripts/market_collector.py KR 2>&1 | tail -5
+
+      - name: Fetch Naver signals (convergence tickers)
+        continue-on-error: true
+        run: |
+          cd $WKAQ
+          python scripts/fetch_naver_signals.py --from-convergence 2>&1 | tail -8
+
+      - name: Commit & push results to WkAutoQuant
+        run: |
+          cd $WKAQ
+          git config user.name  "WkAutoQuant Bot"
+          git config user.email "bot@wkautoquant.local"
+          git add market_data/ wavevault/naver_signals/ 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "📡 news+market $(date -u +%Y%m%d_%H%M) [skip ci]"
+            git pull --rebase --autostash origin main --quiet 2>/dev/null || true
+            git push origin HEAD:main \
+              && echo "[news] pushed to WkAutoQuant" \
+              || echo "[news] push failed (non-fatal)"
+          else
+            echo "[news] nothing new to commit"
+          fi
