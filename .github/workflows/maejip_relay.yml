@@ -152,6 +152,30 @@ jobs:
               gh issue comment "$ISSUE" --repo kiexpert/WkAutoQuant --body "$COMMENT_BODY" >/dev/null 2>&1 || true
             fi
 
+            # Relay KR hits file -> WkAutoQuant repo, then trigger market_15m_kr.yml
+            # MAEJIP_RELAY_MODE=1 blocks feedquant token commits but NOT this
+            # explicit hits-file commit. Commit is intentional, fires GHA push trigger.
+            if [ "$HITS" -gt 0 ] && [ "$MARKET" = "KR" ]; then
+              HITS_FILE="wavevault/maejip_realtime_hits.json"
+              if [ -f "$HITS_FILE" ]; then
+                git -C "$GITHUB_WORKSPACE/wkaq" config user.name  "WkAutoQuant Bot"
+                git -C "$GITHUB_WORKSPACE/wkaq" config user.email "bot@wkautoquant.local"
+                git -C "$GITHUB_WORKSPACE/wkaq" add "$HITS_FILE" 2>/dev/null || true
+                if ! git -C "$GITHUB_WORKSPACE/wkaq" diff --cached --quiet; then
+                  git -C "$GITHUB_WORKSPACE/wkaq" commit -m "maejip relay KR hits=${HITS} [skip ci]" >/dev/null 2>&1 || true
+                  git -C "$GITHUB_WORKSPACE/wkaq" pull --rebase --autostash origin main >/dev/null 2>&1 || true
+                  if git -C "$GITHUB_WORKSPACE/wkaq" push origin main >/dev/null 2>&1; then
+                    echo "[relay] KR hits file pushed -> trigger market_15m_kr.yml"
+                    gh workflow run market_15m_kr.yml --repo kiexpert/WkAutoQuant >/dev/null 2>&1 || true
+                  else
+                    echo "[relay] push failed; skip workflow trigger"
+                  fi
+                else
+                  echo "[relay] hits file unchanged; skip trigger"
+                fi
+              fi
+            fi
+
             ROUNDS=$((ROUNDS + 1))
 
             REMAINING=$((DEADLINE - $(date +%s)))
