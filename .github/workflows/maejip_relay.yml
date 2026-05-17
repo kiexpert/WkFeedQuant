@@ -60,10 +60,10 @@ jobs:
           HOUR=$(date -u +%H | sed 's/^0//')
           if [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ]; then
             MARKET=KR
-            SCREENER='scripts/maejip_realtime_screener.py --cap 2000'
+            SCREENER='scripts/wkwave_daemon.py --mode scan --market KR --cap 2000'
           elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then
             MARKET=US
-            SCREENER='scripts/maejip_us_screener.py --cap 100'
+            SCREENER='scripts/wkwave_daemon.py --mode scan --market US --cap 100'
           else
             echo 'no market open'
             exit 0
@@ -79,21 +79,19 @@ jobs:
             ISSUE=""
           fi
 
-          # INIT: cross-account Fabio check on all held positions at daemon start
+          # INIT
           WKAQ="$GITHUB_WORKSPACE/wkaq"
-          echo "[daemon] init -- cross-account Fabio check"
           cd "$WKAQ"
-          python scripts/run_cross_account_fabio.py > /tmp/cross_fabio.txt 2>&1 || true
-          CROSS_BUY=$(grep -c "BUY \[" /tmp/cross_fabio.txt 2>/dev/null || echo 0)
-          CROSS_SELL=$(grep -c "SELL \[D\]" /tmp/cross_fabio.txt 2>/dev/null || echo 0)
-          echo "[daemon] cross-fabio: buy=${CROSS_BUY} sell=${CROSS_SELL}"
+          python scripts/wkwave_daemon.py --mode init > /tmp/w_init.txt 2>&1 || true
+          CROSS_BUY=$(grep -c "BUY" /tmp/w_init.txt 2>/dev/null || echo 0)
+          CROSS_SELL=$(grep -c "SELL" /tmp/w_init.txt 2>/dev/null || echo 0)
           if [ "$((CROSS_BUY + CROSS_SELL))" -gt 0 ]; then
             HIT_FILE="$WKAQ/wavevault/maejip_realtime_hits.json"
             if [ -f "$HIT_FILE" ]; then
               git -C "$WKAQ" config user.name  "WkAutoQuant Bot" 2>/dev/null || true
               git -C "$WKAQ" config user.email "bot@wkautoquant.local" 2>/dev/null || true
               git -C "$WKAQ" add "$HIT_FILE" 2>/dev/null || true
-              git -C "$WKAQ" diff --cached --quiet ||                 git -C "$WKAQ" -c core.hooksPath=/dev/null commit                   -m "cross-fabio $(date -u +%H%M) buy=${CROSS_BUY} sell=${CROSS_SELL} [skip ci]"
+              git -C "$WKAQ" diff --cached --quiet ||                 git -C "$WKAQ" -c core.hooksPath=/dev/null commit                   -m "signal $(date -u +%H%M) buy=${CROSS_BUY} sell=${CROSS_SELL} [skip ci]"
               git -C "$WKAQ" pull --rebase --autostash origin main --quiet 2>/dev/null || true
               git -C "$WKAQ" push origin HEAD:main 2>/dev/null && echo "[daemon] hits pushed" || true
             fi
@@ -119,8 +117,8 @@ jobs:
               [ -n "$FRESH" ] && echo "$FRESH" > ~/.wk-cache/hantoo/hantoo_token_kr.json && echo "[token] refreshed" || true
             fi
 
-            # Per-minute direct pyramid buy via Hantoo REST (no GHA dispatch)
-            cd "$WKAQ" && python scripts/maejip_pyramid_buyer.py 2>&1 | grep -E "BUY|bought|faded|limit" || true
+            # per-tick
+            cd "$WKAQ" && python scripts/wkwave_daemon.py --mode tick > /dev/null 2>&1 || true
             cd "$GITHUB_WORKSPACE"
 
             printf '%s ' "$(date -u +'%H:%M')"
