@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WkWave Live Viewer</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; font-weight: 600; color: var(--blue); }
+  .header-meta { color: var(--muted); font-size: 11px; margin-left: auto; }
+  .container { padding: 12px 16px; max-width: 900px; margin: 0 auto; }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .card-header {
+    background: var(--bg3);
+    padding: 8px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-body { padding: 14px; }
+
+  /* Auth gate */
+  #auth-gate { display: none; }
+  #auth-gate.show { display: block; }
+  .auth-form { max-width: 480px; }
+  .auth-form input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .auth-form input:focus { outline: none; border-color: var(--blue); }
+  .btn {
+    background: var(--blue);
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-block;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-sm {
+    font-size: 11px;
+    padding: 4px 10px;
+    background: var(--bg3);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-sm:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* Status row */
+  .status-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .status-pill {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status-pill .label { color: var(--muted); }
+  .status-pill .value { font-weight: 600; }
+
+  /* Run list */
+  .run-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .run-row:last-child { border-bottom: none; }
+  .run-num { color: var(--muted); font-size: 11px; min-width: 52px; }
+  .run-status { font-size: 15px; }
+  .run-name { flex: 1; min-width: 120px; color: var(--text); }
+  .run-time { color: var(--muted); font-size: 11px; }
+  .run-duration { color: var(--muted); font-size: 11px; min-width: 48px; text-align: right; }
+
+  /* Hits table */
+  .hits-table { width: 100%; border-collapse: collapse; }
+  .hits-table th {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hits-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .hits-table tr:last-child td { border-bottom: none; }
+  .hits-table tr:hover td { background: var(--bg3); }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-buy { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .badge-watch { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+  .badge-empty { background: rgba(139,148,158,0.1); color: var(--muted); border: 1px solid var(--border); }
+  .code-chip {
+    font-weight: 700;
+    color: var(--blue);
+    background: rgba(88,166,255,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  /* Token status */
+  .token-ok { color: var(--green); }
+  .token-warn { color: var(--yellow); }
+  .token-bad { color: var(--red); }
+  .token-unknown { color: var(--muted); }
+
+  /* Next trigger */
+  .next-box {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .countdown-big {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--blue);
+    min-width: 72px;
+  }
+
+  /* Refresh bar */
+  #refresh-bar-wrap {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+  }
+  #refresh-bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #refresh-bar-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 2px;
+    transition: width 1s linear;
+    width: 100%;
+  }
+  #refresh-label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .reload-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 2px; }
+  .reload-btn:hover { color: var(--blue); }
+
+  /* Error */
+  .err-box {
+    color: var(--red);
+    font-size: 11px;
+    padding: 6px 8px;
+    background: rgba(248,81,73,0.08);
+    border: 1px solid rgba(248,81,73,0.2);
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+
+  /* Spinner */
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* Links */
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .status-pill { flex: 1; min-width: 140px; }
+    .countdown-big { font-size: 22px; }
+    .hits-table { font-size: 12px; }
+  }
+  .mb4 { margin-bottom: 4px; }
+  .mb8 { margin-bottom: 8px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 11px; }
+  body { padding-bottom: 40px; }
+</style>
+</head>
+<body>
+
+<!-- AUTH GATE -->
+<div id="auth-gate">
+  <div class="container" style="padding-top:48px;">
+    <div class="card">
+      <div class="card-header">🔐 GitHub PAT 인증 필요</div>
+      <div class="card-body">
+        <div class="auth-form">
+          <p class="muted mb8">WkAutoQuant (private repo) 데이터를 읽으려면 GitHub Personal Access Token이 필요합니다.</p>
+          <p class="muted small mb8">권한: <code>repo</code> (read) · <code>workflow</code> (read)<br>
+          토큰은 브라우저 로컬에만 저장됩니다. 어디에도 전송되지 않습니다.</p>
+          <input type="password" id="pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+          <div style="margin-top:8px;">
+            <button class="btn" onclick="savePAT()">저장 &amp; 시작</button>
+            <span id="auth-err" class="err-box" style="display:none;margin-left:8px;"></span>
+          </div>
+          <p class="muted small" style="margin-top:10px;">
+            <a href="https://github.com/settings/tokens/new?description=WkWave+Viewer&scopes=repo,workflow" target="_blank">→ 새 토큰 발급 (GitHub)</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD -->
+<div id="dashboard" style="display:none;">
+  <header>
+    <span>🌊</span>
+    <h1>WkWave Live Viewer</h1>
+    <div class="header-meta" id="last-updated">Loading...</div>
+    <button class="btn-sm" onclick="clearPAT()">토큰 초기화</button>
+  </header>
+
+  <div class="container" style="padding-top:14px;">
+
+    <!-- Status pills -->
+    <div class="status-row" id="status-row">
+      <div class="status-pill">
+        <span class="label">Market</span>
+        <span class="value" id="market-status"><span class="spin">⏳</span></span>
+      </div>
+      <div class="status-pill">
+        <span class="label">Token</span>
+        <span class="value" id="token-status"><span class="spin">⏳</span></span>
+      </div>
+      <div class="status-pill">
+        <span class="label">Hits 생성</span>
+        <span class="value" id="hits-age"><span class="spin">⏳</span></span>
+      </div>
+    </div>
+
+    <!-- Next trigger -->
+    <div class="card">
+      <div class="card-header">⏰ 다음 트리거</div>
+      <div class="card-body">
+        <div class="next-box">
+          <div>
+            <div class="muted small">다음 cron까지</div>
+            <div class="countdown-big" id="next-cron">--:--</div>
+          </div>
+          <div>
+            <div class="muted small">다음 실행 시각 (UTC)</div>
+            <div id="next-cron-time" style="font-size:14px; color:var(--text);">-</div>
+          </div>
+          <div>
+            <div class="muted small">Cron 스케줄</div>
+            <div class="muted small">0,20,40 UTC 00-06 (KR) · 08-20 (US)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daemon runs -->
+    <div class="card">
+      <div class="card-header">🌊 WkWave Live Daemon — 최근 5회 실행</div>
+      <div class="card-body" id="run-list">
+        <div class="muted"><span class="spin">⏳</span> 불러오는 중...</div>
+      </div>
+    </div>
+
+    <!-- Hits -->
+    <div class="card">
+      <div class="card-header">🎯 매수 후보 (maejip_realtime_hits)</div>
+      <div class="card-body" id="hits-body">
+        <div class="muted"><span class="spin">⏳</span> 불러오는 중...</div>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+</div><!-- /dashboard -->
+
+<!-- Refresh bar -->
+<div id="refresh-bar-wrap" style="display:none;">
+  <span id="refresh-label">30s</span>
+  <div id="refresh-bar-track"><div id="refresh-bar-fill"></div></div>
+  <button class="reload-btn" onclick="refresh()" title="지금 새로고침">🔄</button>
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const WKFQ   = 'kiexpert/WkFeedQuant';
+const WKAQ   = 'kiexpert/WkAutoQuant';
+const DAEMON = '🌊 WkWave Live Daemon';
+const REFRESH_SEC = 30;
+let pat = '';
+let refreshTimer = null;
+let countdownSec = REFRESH_SEC;
+
+// ─── PAT storage ──────────────────────────────────────────────────────────────
+function getPAT()  { return localStorage.getItem('wkwave_pat') || ''; }
+function savePAT() {
+  const v = document.getElementById('pat-input').value.trim();
+  if (!v) { showAuthErr('토큰을 입력하세요.'); return; }
+  localStorage.setItem('wkwave_pat', v);
+  pat = v;
+  boot();
+}
+function clearPAT() {
+  localStorage.removeItem('wkwave_pat');
+  location.reload();
+}
+function showAuthErr(msg) {
+  const el = document.getElementById('auth-err');
+  el.textContent = msg;
+  el.style.display = 'inline-block';
+}
+
+// ─── GitHub API ───────────────────────────────────────────────────────────────
+async function ghGet(url) {
+  const r = await fetch(url, { headers: { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json' } });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} — ${url}`);
+  return r.json();
+}
+
+async function ghContent(repo, path) {
+  const d = await ghGet(`https://api.github.com/repos/${repo}/contents/${path}`);
+  return JSON.parse(atob(d.content.replace(/\n/g, '')));
+}
+
+// ─── Market session ───────────────────────────────────────────────────────────
+function marketStatus() {
+  const now = new Date();
+  const utcH = now.getUTCHours();
+  // KR: UTC 00:00-06:30 (09:00-15:30 KST)
+  // US pre: UTC 13:30-14:30 (09:30 ET = 13:30 UTC)
+  // US regular: UTC 14:30-21:00
+  const utcM = now.getUTCMinutes();
+  const totalMin = utcH * 60 + utcM;
+  if (totalMin >= 0 && totalMin < 390) {   // 00:00-06:30
+    return { icon: '🇰🇷', label: 'KR 장중' };
+  } else if (totalMin >= 810 && totalMin < 870) { // 13:30-14:30 pre
+    return { icon: '🇺🇸', label: 'US 프리마켓' };
+  } else if (totalMin >= 870 && totalMin < 1260) { // 14:30-21:00
+    return { icon: '🇺🇸', label: 'US 본장' };
+  } else {
+    return { icon: '🌙', label: 'Off' };
+  }
+}
+
+// ─── Next cron ────────────────────────────────────────────────────────────────
+function nextCronUTC() {
+  const now = new Date();
+  const utcH = now.getUTCHours();
+  const utcM = now.getUTCMinutes();
+  const utcS = now.getUTCSeconds();
+
+  // cron minutes: 0, 20, 40
+  const mins = [0, 20, 40];
+  // active UTC hours: 0-6 (KR) and 8-20 (US)
+  const activeHours = [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20];
+
+  // find next trigger
+  let candidate = null;
+  for (let dayOff = 0; dayOff < 2; dayOff++) {
+    for (let h = 0; h < 24; h++) {
+      if (!activeHours.includes(h)) continue;
+      for (const m of mins) {
+        const trigUtcH = h;
+        const trigUtcM = m;
+        // candidate datetime
+        const cand = new Date(Date.UTC(
+          now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayOff,
+          trigUtcH, trigUtcM, 0, 0
+        ));
+        if (cand > now) {
+          if (!candidate || cand < candidate) candidate = cand;
+        }
+      }
+    }
+    if (candidate) break;
+  }
+  return candidate;
+}
+
+function updateNextCron() {
+  const next = nextCronUTC();
+  if (!next) { document.getElementById('next-cron').textContent = '--:--'; return; }
+  const diffMs = next - new Date();
+  const diffS = Math.floor(diffMs / 1000);
+  const mm = String(Math.floor(diffS / 60)).padStart(2, '0');
+  const ss = String(diffS % 60).padStart(2, '0');
+  document.getElementById('next-cron').textContent = `${mm}:${ss}`;
+  document.getElementById('next-cron-time').textContent =
+    `${String(next.getUTCHours()).padStart(2,'0')}:${String(next.getUTCMinutes()).padStart(2,'0')} UTC`;
+}
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+function runIcon(conclusion, status) {
+  if (status === 'in_progress' || status === 'queued') return '🟡';
+  if (conclusion === 'success') return '✅';
+  if (conclusion === 'failure') return '❌';
+  if (conclusion === 'cancelled') return '⏹';
+  return '❓';
+}
+
+function relTime(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  const diffS = Math.floor((new Date() - d) / 1000);
+  if (diffS < 60) return `${diffS}s ago`;
+  if (diffS < 3600) return `${Math.floor(diffS/60)}m ago`;
+  if (diffS < 86400) return `${Math.floor(diffS/3600)}h ago`;
+  return `${Math.floor(diffS/86400)}d ago`;
+}
+
+function durStr(run) {
+  if (!run.updated_at || !run.run_started_at) return '';
+  const s = Math.floor((new Date(run.updated_at) - new Date(run.run_started_at)) / 1000);
+  if (s < 0 || s > 7200) return '';
+  return `${Math.floor(s/60)}m${s%60}s`;
+}
+
+// ─── Render helpers ───────────────────────────────────────────────────────────
+function renderRuns(runs) {
+  if (!runs.length) return '<div class="muted">실행 기록 없음</div>';
+  return runs.map((r, i) => `
+    <div class="run-row">
+      <span class="run-num">#${r.run_number}</span>
+      <span class="run-status">${runIcon(r.conclusion, r.status)}</span>
+      <span class="run-name">
+        <a href="${r.html_url}" target="_blank">${r.display_title || r.name}</a>
+      </span>
+      <span class="run-time">${relTime(r.created_at)}</span>
+      <span class="run-duration">${durStr(r)}</span>
+    </div>
+  `).join('');
+}
+
+function renderHits(data) {
+  const hits = (data && data.hits) || [];
+  if (!hits.length) return '<div class="muted small">현재 매수 후보 없음 (hits: [])</div>';
+  const rows = hits.map(h => {
+    const sig = (h.signal_type || '').toLowerCase();
+    const badge = sig.includes('매수') || sig.includes('buy')
+      ? `<span class="badge badge-buy">${h.signal_type || '매수'}</span>`
+      : sig.includes('검토') || sig.includes('watch')
+      ? `<span class="badge badge-watch">${h.signal_type || '검토'}</span>`
+      : `<span class="badge badge-empty">${h.signal_type || '-'}</span>`;
+    return `<tr>
+      <td><span class="code-chip">${h.code || '-'}</span></td>
+      <td>${h.name || '-'}</td>
+      <td class="muted">${h.condition || '-'}</td>
+      <td>${badge}</td>
+      <td style="text-align:right;">${h.qty_hint != null ? h.qty_hint : '-'}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="hits-table">
+    <thead><tr>
+      <th>코드</th><th>종목명</th><th>조건</th><th>시그널</th><th style="text-align:right;">수량힌트</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function tokenDisplay(tokenObj) {
+  if (!tokenObj) return '<span class="token-unknown">unknown</span>';
+  // field: access_token_token_expired = "YYYY-MM-DD HH:MM:SS"
+  const expStr = tokenObj.access_token_token_expired;
+  if (!expStr) return '<span class="token-unknown">unknown</span>';
+  // parse as UTC
+  const exp = new Date(expStr.replace(' ', 'T') + 'Z');
+  const diffH = (exp - new Date()) / 3600000;
+  if (diffH < 0) return `<span class="token-bad">EXPIRED</span>`;
+  if (diffH < 2) return `<span class="token-warn">EXPIRING ${diffH.toFixed(1)}h</span>`;
+  return `<span class="token-ok">OK ${diffH.toFixed(1)}h</span>`;
+}
+
+// ─── Main fetch & render ──────────────────────────────────────────────────────
+async function refresh() {
+  clearTimeout(refreshTimer);
+  countdownSec = REFRESH_SEC;
+  updateRefreshBar();
+
+  // Market + next trigger (sync)
+  const ms = marketStatus();
+  document.getElementById('market-status').innerHTML = `${ms.icon} ${ms.label}`;
+  updateNextCron();
+
+  // Last updated
+  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('ko-KR');
+
+  // Parallel: runs + hits + token
+  const [runsResult, hitsResult, tokenResult] = await Promise.allSettled([
+    fetchRuns(),
+    ghContent(WKAQ, 'wavevault/maejip_realtime_hits.json'),
+    ghContent(WKAQ, 'wavevault/hantoo_cache/hantoo_token_kr.json'),
+  ]);
+
+  // Runs
+  if (runsResult.status === 'fulfilled') {
+    document.getElementById('run-list').innerHTML = renderRuns(runsResult.value);
+  } else {
+    document.getElementById('run-list').innerHTML = `<div class="err-box">Runs 오류: ${runsResult.reason}</div>`;
+  }
+
+  // Hits
+  if (hitsResult.status === 'fulfilled') {
+    const data = hitsResult.value;
+    document.getElementById('hits-body').innerHTML = renderHits(data);
+    // hits age
+    const genAt = data && data.generated_at ? new Date(data.generated_at) : null;
+    if (genAt) {
+      const ageMin = Math.floor((new Date() - genAt) / 60000);
+      const ageColor = ageMin > 25 ? 'var(--red)' : ageMin > 15 ? 'var(--yellow)' : 'var(--green)';
+      document.getElementById('hits-age').innerHTML =
+        `<span style="color:${ageColor}">${ageMin}분 전</span>`;
+    } else {
+      document.getElementById('hits-age').textContent = '-';
+    }
+  } else {
+    document.getElementById('hits-body').innerHTML = `<div class="err-box">Hits 오류: ${hitsResult.reason}</div>`;
+    document.getElementById('hits-age').textContent = '오류';
+  }
+
+  // Token
+  if (tokenResult.status === 'fulfilled') {
+    document.getElementById('token-status').innerHTML = tokenDisplay(tokenResult.value);
+  } else {
+    document.getElementById('token-status').innerHTML = '<span class="token-unknown">오류</span>';
+  }
+
+  scheduleRefresh();
+}
+
+async function fetchRuns() {
+  // Step 1: find workflow id
+  const wfs = await ghGet(`https://api.github.com/repos/${WKFQ}/actions/workflows?per_page=100`);
+  const wf = (wfs.workflows || []).find(w => w.name === DAEMON);
+  if (!wf) throw new Error('Workflow not found: ' + DAEMON);
+  // Step 2: get runs
+  const runs = await ghGet(`https://api.github.com/repos/${WKFQ}/actions/runs?workflow_id=${wf.id}&per_page=5`);
+  return (runs.workflow_runs || []).slice(0, 5);
+}
+
+// ─── Refresh bar / countdown ──────────────────────────────────────────────────
+function updateRefreshBar() {
+  const pct = (countdownSec / REFRESH_SEC) * 100;
+  document.getElementById('refresh-bar-fill').style.width = pct + '%';
+  document.getElementById('refresh-label').textContent = countdownSec + 's';
+}
+
+function scheduleRefresh() {
+  refreshTimer = setInterval(() => {
+    countdownSec--;
+    updateRefreshBar();
+    if (countdownSec <= 0) {
+      clearInterval(refreshTimer);
+      refresh();
+    }
+  }, 1000);
+}
+
+// Cron countdown ticks every second independently
+setInterval(updateNextCron, 1000);
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+function boot() {
+  pat = getPAT();
+  if (!pat) {
+    document.getElementById('auth-gate').classList.add('show');
+    return;
+  }
+  document.getElementById('auth-gate').classList.remove('show');
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('refresh-bar-wrap').style.display = 'flex';
+  refresh();
+}
+
+window.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
