@@ -1,4 +1,4 @@
-﻿name: maejip_feedquant_relay
+name: maejip_feedquant_relay
 
 on:
   schedule:
@@ -132,6 +132,10 @@ jobs:
               FRESH=$(git -C "$GITHUB_WORKSPACE/wkaq" show FETCH_HEAD:wavevault/hantoo_cache/hantoo_token_kr.json 2>/dev/null || true)
               [ -n "$FRESH" ] && echo "$FRESH" > ~/.wk-cache/hantoo/hantoo_token_kr.json && echo "[token] refreshed" || true
             fi
+
+            # Per-minute direct pyramid buy via Hantoo REST (no GHA dispatch)
+            cd "$WKAQ" && python scripts/maejip_pyramid_buyer.py 2>&1 | grep -E "BUY|bought|faded|limit" || true
+            cd "$GITHUB_WORKSPACE"
 
             printf '%s ' "$(date -u +'%H:%M')"
 
