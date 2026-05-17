@@ -10,193 +10,46 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: maejip-feedquant-relay
-  cancel-in-progress: false
-
 env:
-  GH_TOKEN: ${{ secrets.GH_PAT }}
-  HANTOO_APPKEY_KR: ${{ secrets.HANTOO_APPKEY_KR }}
+  GH_TOKEN:            ${{ secrets.GH_PAT }}
+  HANTOO_APPKEY_KR:    ${{ secrets.HANTOO_APPKEY_KR }}
   HANTOO_APPSECRET_KR: ${{ secrets.HANTOO_APPSECRET_KR }}
   HANTOO_ACCOUNTNO_KR: ${{ secrets.HANTOO_ACCOUNTNO_KR }}
-  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-  SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
-  PYTHONUTF8: "1"
-  PYTHONPATH: "${{ github.workspace }}/wkaq/scripts"
-  MAEJIP_RELAY_MODE: "1"
+  SLACK_BOT_TOKEN:     ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL:       ${{ secrets.SLACK_CHANNEL }}
+  PYTHONUTF8:          "1"
+  PYTHONPATH:          "${{ github.workspace }}/wkaq/scripts"
+  MAEJIP_RELAY_MODE:   "1"
 
 jobs:
   relay:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
 
     steps:
       - name: setup-python
         uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        with: { python-version: "3.12" }
 
-      - name: clone wkaq
-        run: git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/kiexpert/WkAutoQuant.git wkaq
-
-      - name: pip install quiet
+      - name: clone
         run: |
-          python -m pip install --upgrade pip -q
-          pip install -q -r wkaq/requirements.txt
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/kiexpert/WkAutoQuant.git" \
+            wkaq
 
-      - name: restore hantoo token
+      - name: install
+        run: pip install -q -r wkaq/requirements.txt
+
+      - name: restore token
         run: |
           mkdir -p ~/.wk-cache/hantoo
-          if [ -f wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ]; then
-            cp wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ~/.wk-cache/hantoo/
-          fi
+          [ -f wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ] && \
+            cp wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ~/.wk-cache/hantoo/ || true
 
-      - name: Run 18-minute daemon
-        working-directory: wkaq
+      - name: run
         run: |
-          set -euo pipefail
-
-          # weekday gate removed -- weekend=rehearsal (user rule 2026-05-17)
           HOUR=$(date -u +%H | sed 's/^0//')
-          if [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ]; then
-            MARKET=KR
-            SCREENER='scripts/wkwave_daemon.py --mode scan --market KR --cap 2000'
-          elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then
-            MARKET=US
-            SCREENER='scripts/wkwave_daemon.py --mode scan --market US --cap 100'
-          else
-            echo 'no market open'
-            exit 0
-          fi
-
-          echo "[market] $MARKET"
-
-          ACTIVE_VAR="MAEJIP_ACTIVE_${MARKET}_RUN"
-          gh variable set "$ACTIVE_VAR" --repo kiexpert/WkFeedQuant --body "$GITHUB_RUN_ID" >/dev/null
-
-          ISSUE="$(gh issue list --repo kiexpert/WkAutoQuant --state open --label daily --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)"
-          if [ "$ISSUE" = "null" ] || [ -z "$ISSUE" ]; then
-            ISSUE=""
-          fi
-
-          # INIT
-          WKAQ="$GITHUB_WORKSPACE/wkaq"
-          cd "$WKAQ"
-          python scripts/wkwave_daemon.py --mode init > /tmp/w_init.txt 2>&1 || true
-          CROSS_BUY=$(grep -c "BUY" /tmp/w_init.txt 2>/dev/null || echo 0)
-          CROSS_SELL=$(grep -c "SELL" /tmp/w_init.txt 2>/dev/null || echo 0)
-          if [ "$((CROSS_BUY + CROSS_SELL))" -gt 0 ]; then
-            HIT_FILE="$WKAQ/wavevault/maejip_realtime_hits.json"
-            if [ -f "$HIT_FILE" ]; then
-              git -C "$WKAQ" config user.name  "WkAutoQuant Bot" 2>/dev/null || true
-              git -C "$WKAQ" config user.email "bot@wkautoquant.local" 2>/dev/null || true
-              git -C "$WKAQ" add "$HIT_FILE" 2>/dev/null || true
-              git -C "$WKAQ" diff --cached --quiet ||                 git -C "$WKAQ" -c core.hooksPath=/dev/null commit                   -m "signal $(date -u +%H%M) buy=${CROSS_BUY} sell=${CROSS_SELL} [skip ci]"
-              git -C "$WKAQ" pull --rebase --autostash origin main --quiet 2>/dev/null || true
-              git -C "$WKAQ" push origin HEAD:main 2>/dev/null && echo "[daemon] hits pushed" || true
-            fi
-            gh workflow run market_15m_kr.yml --repo kiexpert/WkAutoQuant 2>/dev/null               && echo "[daemon] KR dispatched" || true
-            gh workflow run market_15m_us.yml --repo kiexpert/WkAutoQuant 2>/dev/null               && echo "[daemon] US dispatched" || true
-          fi
-          cd "$GITHUB_WORKSPACE"
-
-          DEADLINE=$(( $(date +%s) + 18 * 60 ))
-          ROUNDS=0
-
-          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            ACTIVE="$(gh api "repos/kiexpert/WkFeedQuant/actions/variables/$ACTIVE_VAR" --jq .value 2>/dev/null || echo "$GITHUB_RUN_ID")"
-            if [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
-              printf '\n[handoff] new daemon detected\n'
-              break
-            fi
-
-            # Refresh KR token per iteration -- prevents stale token after 18 min
-            if [ "$MARKET" = "KR" ]; then
-              git -C "$GITHUB_WORKSPACE/wkaq" fetch --depth 1 origin main --quiet 2>/dev/null || true
-              FRESH=$(git -C "$GITHUB_WORKSPACE/wkaq" show FETCH_HEAD:wavevault/hantoo_cache/hantoo_token_kr.json 2>/dev/null || true)
-              [ -n "$FRESH" ] && echo "$FRESH" > ~/.wk-cache/hantoo/hantoo_token_kr.json && echo "[token] refreshed" || true
-            fi
-
-            # per-tick
-            cd "$WKAQ" && python scripts/wkwave_daemon.py --mode tick > /dev/null 2>&1 || true
-            cd "$GITHUB_WORKSPACE"
-
-            printf '%s ' "$(date -u +'%H:%M')"
-
-            : > /tmp/out.txt
-            python $SCREENER > /tmp/out.txt 2>&1 &
-            SCAN_PID=$!
-
-            SEEN=0
-            while kill -0 "$SCAN_PID" 2>/dev/null; do
-              sleep 1
-
-              CURRENT_LINES="$(wc -l < /tmp/out.txt 2>/dev/null || printf '0')"
-              if [ "$CURRENT_LINES" -gt "$SEEN" ]; then
-                NEW_BLOCK="$(sed -n "$((SEEN + 1)),$CURRENT_LINES p" /tmp/out.txt 2>/dev/null || true)"
-                NEW_HITS="$(printf '%s\n' "$NEW_BLOCK" | grep -c 'HIT' 2>/dev/null || true)"
-                SEEN="$CURRENT_LINES"
-                if [ "$NEW_HITS" -gt 0 ]; then
-                  HIT_DIGIT="$NEW_HITS"
-                  if [ "$HIT_DIGIT" -gt 9 ]; then
-                    HIT_DIGIT=9
-                  fi
-                  printf '%s' "$HIT_DIGIT"
-                else
-                  printf '.'
-                fi
-              else
-                printf '.'
-              fi
-            done
-
-            wait "$SCAN_PID" 2>/dev/null || true
-            echo
-
-            HITS="$(grep -c 'HIT' /tmp/out.txt 2>/dev/null || true)"
-            HITS="${HITS:-0}"
-
-            if [ "$HITS" -gt 0 ] && [ -n "$ISSUE" ]; then
-              HIT_DETAIL="$(grep -A 4 'HIT' /tmp/out.txt 2>/dev/null || true)"
-              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**$(printf '\xF0\x9F\x8E\xAF') 留ㅼ쭛?좏뻾臾쇰━ relay [$MARKET]** hits=${HITS}" "$HIT_DETAIL")"
-              gh issue comment "$ISSUE" --repo kiexpert/WkAutoQuant --body "$COMMENT_BODY" >/dev/null 2>&1 || true
-            fi
-
-            # Relay KR hits file -> WkAutoQuant repo, then trigger market_15m_kr.yml
-            # MAEJIP_RELAY_MODE=1 blocks feedquant token commits but NOT this
-            # explicit hits-file commit. Commit is intentional, fires GHA push trigger.
-            if [ "$HITS" -gt 0 ] && [ "$MARKET" = "KR" ]; then
-              HITS_FILE="wavevault/maejip_realtime_hits.json"
-              if [ -f "$HITS_FILE" ]; then
-                git -C "$GITHUB_WORKSPACE/wkaq" config user.name  "WkAutoQuant Bot"
-                git -C "$GITHUB_WORKSPACE/wkaq" config user.email "bot@wkautoquant.local"
-                git -C "$GITHUB_WORKSPACE/wkaq" add "$HITS_FILE" 2>/dev/null || true
-                if ! git -C "$GITHUB_WORKSPACE/wkaq" diff --cached --quiet; then
-                  git -C "$GITHUB_WORKSPACE/wkaq" commit -m "maejip relay KR hits=${HITS} [skip ci]" >/dev/null 2>&1 || true
-                  git -C "$GITHUB_WORKSPACE/wkaq" pull --rebase --autostash origin main >/dev/null 2>&1 || true
-                  if git -C "$GITHUB_WORKSPACE/wkaq" push origin main >/dev/null 2>&1; then
-                    echo "[relay] KR hits file pushed -> trigger market_15m_kr.yml"
-                    gh workflow run market_15m_kr.yml --repo kiexpert/WkAutoQuant >/dev/null 2>&1 || true
-                  else
-                    echo "[relay] push failed; skip workflow trigger"
-                  fi
-                else
-                  echo "[relay] hits file unchanged; skip trigger"
-                fi
-              fi
-            fi
-
-            ROUNDS=$((ROUNDS + 1))
-
-            REMAINING=$((DEADLINE - $(date +%s)))
-            if [ "$REMAINING" -le 0 ]; then
-              break
-            fi
-            if [ "$REMAINING" -gt 60 ]; then
-              sleep 60
-            else
-              sleep "$REMAINING"
-            fi
-          done
-
-          echo "[relay] done after $ROUNDS rounds"
+          if   [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ];  then MARKET=KR
+          elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then MARKET=US
+          else echo '.'; exit 0; fi
+          cd wkaq
+          python scripts/wkwave_daemon.py --market "$MARKET" --run-id "$GITHUB_RUN_ID"
