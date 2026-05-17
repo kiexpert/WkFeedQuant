@@ -91,6 +91,7 @@ jobs:
           fi
 
           # INIT: cross-account Fabio check on all held positions at daemon start
+          WKAQ="$GITHUB_WORKSPACE/wkaq"
           echo "[daemon] init -- cross-account Fabio check"
           cd "$WKAQ"
           python scripts/run_cross_account_fabio.py > /tmp/cross_fabio.txt 2>&1 || true
