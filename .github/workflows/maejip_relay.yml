@@ -67,11 +67,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          case "$(date -u +%u)" in
-            1|2|3|4|5) ;;
-            *) exit 0 ;;
-          esac
-
+          # weekday gate removed -- weekend=rehearsal (user rule 2026-05-17)
           HOUR=$(date -u +%H | sed 's/^0//')
           if [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ]; then
             MARKET=KR
