@@ -2,7 +2,7 @@ name: maejip_feedquant_relay
 
 on:
   schedule:
-    - cron: "0,20,40 0-6 * * 1-5"
+    - cron: "0,20,40 0-6 * * *"
     - cron: '0,20,40 8 * * 1-5'
     - cron: '0,20,40 9 * * 1-5'
     - cron: '0,20,40 10 * * 1-5'
