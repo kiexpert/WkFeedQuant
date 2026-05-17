@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -252,6 +252,26 @@
   .muted { color: var(--muted); }
   .small { font-size: 11px; }
   body { padding-bottom: 40px; }
+
+  /* Live log terminal */
+  #live-log-section { margin-bottom: 12px; }
+  #live-log-section .card-header { display: flex; align-items: center; gap: 8px; }
+  #live-terminal {
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 0.8em;
+    min-height: 120px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: monospace;
+    color: #00ff41;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.6;
+  }
+  #live-status { font-size: 0.75em; color: #888; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -344,6 +364,14 @@
       </div>
     </div>
 
+    <!-- Live log -->
+    <div class="card" id="live-log-section" style="display:none">
+      <div class="card-header">📡 LIVE OUTPUT <span id="live-status"></span></div>
+      <div class="card-body">
+        <div id="live-terminal"></div>
+      </div>
+    </div>
+
   </div><!-- /container -->
 </div><!-- /dashboard -->
 
@@ -362,6 +390,8 @@ const DAEMON = '🌊 WkWave Live Daemon';
 const REFRESH_SEC = 30;
 let pat = '';
 let refreshTimer = null;
+let liveJobId = null;
+let liveLogTimer = null;
 let countdownSec = REFRESH_SEC;
 
 // ─── PAT storage ──────────────────────────────────────────────────────────────
@@ -571,6 +601,11 @@ async function refresh() {
     document.getElementById('run-list').innerHTML = `<div class="err-box">Runs 오류: ${runsResult.reason}</div>`;
   }
 
+  // Start live log if a run is in progress
+  if (runsResult.status === 'fulfilled') {
+    startLiveLog(runsResult.value);
+  }
+
   // Hits
   if (hitsResult.status === 'fulfilled') {
     const data = hitsResult.value;
@@ -608,6 +643,58 @@ async function fetchRuns() {
   // Step 2: get runs
   const runs = await ghGet(`https://api.github.com/repos/${WKFQ}/actions/runs?workflow_id=${wf.id}&per_page=5`);
   return (runs.workflow_runs || []).slice(0, 5);
+}
+
+async function fetchLiveLog(jobId) {
+    try {
+        const resp = await fetch(
+            `https://api.github.com/repos/${WKFQ}/actions/jobs/${jobId}/logs`,
+            { headers: { Authorization: `token ${getPAT()}`, Accept: 'application/vnd.github+json' } }
+        );
+        if (!resp.ok) return null;
+        const text = await resp.text();
+        return text;
+    } catch(e) { return null; }
+}
+
+function filterLogLines(rawText) {
+    const KEEP = /\d{2}:\d{2}|hits=|market\]|Outside|init|handoff|\[>\]|tick|scan|OK|success|done after/i;
+    const SKIP = /wkwave_daemon|maejip|feedquant|fabio|hantoo|seonhaeng|pyramid|screener/i;
+    return rawText.split('\n')
+        .map(l => l.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+[^\s]+\s+/, ''))
+        .filter(l => KEEP.test(l) && !SKIP.test(l) && l.trim().length > 2)
+        .slice(-25);
+}
+
+async function startLiveLog(runs) {
+    const active = (runs || []).find(r => r.status === 'in_progress');
+    if (!active) {
+        document.getElementById('live-log-section').style.display = 'none';
+        if (liveLogTimer) { clearInterval(liveLogTimer); liveLogTimer = null; }
+        return;
+    }
+    let jobs;
+    try {
+        const jobsResp = await ghGet(`https://api.github.com/repos/${WKFQ}/actions/runs/${active.id}/jobs`);
+        jobs = jobsResp.jobs || [];
+    } catch(e) { return; }
+    const job = jobs.find(j => j.status === 'in_progress');
+    if (!job) return;
+
+    liveJobId = job.id;
+    document.getElementById('live-log-section').style.display = '';
+
+    if (liveLogTimer) clearInterval(liveLogTimer);
+    liveLogTimer = setInterval(async () => {
+        const text = await fetchLiveLog(liveJobId);
+        if (!text) return;
+        const lines = filterLogLines(text);
+        const term = document.getElementById('live-terminal');
+        const status = document.getElementById('live-status');
+        term.textContent = lines.join('\n');
+        term.scrollTop = term.scrollHeight;
+        status.textContent = `— ${new Date().toLocaleTimeString()}`;
+    }, 1000);
 }
 
 // ─── Refresh bar / countdown ──────────────────────────────────────────────────
