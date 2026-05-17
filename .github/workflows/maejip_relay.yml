@@ -1,4 +1,4 @@
-name: maejip_feedquant_relay
+﻿name: maejip_feedquant_relay
 
 on:
   schedule:
@@ -94,6 +94,28 @@ jobs:
             ISSUE=""
           fi
 
+          # INIT: cross-account Fabio check on all held positions at daemon start
+          echo "[daemon] init -- cross-account Fabio check"
+          cd "$WKAQ"
+          python scripts/run_cross_account_fabio.py > /tmp/cross_fabio.txt 2>&1 || true
+          CROSS_BUY=$(grep -c "BUY \[" /tmp/cross_fabio.txt 2>/dev/null || echo 0)
+          CROSS_SELL=$(grep -c "SELL \[D\]" /tmp/cross_fabio.txt 2>/dev/null || echo 0)
+          echo "[daemon] cross-fabio: buy=${CROSS_BUY} sell=${CROSS_SELL}"
+          if [ "$((CROSS_BUY + CROSS_SELL))" -gt 0 ]; then
+            HIT_FILE="$WKAQ/wavevault/maejip_realtime_hits.json"
+            if [ -f "$HIT_FILE" ]; then
+              git -C "$WKAQ" config user.name  "WkAutoQuant Bot" 2>/dev/null || true
+              git -C "$WKAQ" config user.email "bot@wkautoquant.local" 2>/dev/null || true
+              git -C "$WKAQ" add "$HIT_FILE" 2>/dev/null || true
+              git -C "$WKAQ" diff --cached --quiet ||                 git -C "$WKAQ" -c core.hooksPath=/dev/null commit                   -m "cross-fabio $(date -u +%H%M) buy=${CROSS_BUY} sell=${CROSS_SELL} [skip ci]"
+              git -C "$WKAQ" pull --rebase --autostash origin main --quiet 2>/dev/null || true
+              git -C "$WKAQ" push origin HEAD:main 2>/dev/null && echo "[daemon] hits pushed" || true
+            fi
+            gh workflow run market_15m_kr.yml --repo kiexpert/WkAutoQuant 2>/dev/null               && echo "[daemon] KR dispatched" || true
+            gh workflow run market_15m_us.yml --repo kiexpert/WkAutoQuant 2>/dev/null               && echo "[daemon] US dispatched" || true
+          fi
+          cd "$GITHUB_WORKSPACE"
+
           DEADLINE=$(( $(date +%s) + 18 * 60 ))
           ROUNDS=0
 
@@ -148,7 +170,7 @@ jobs:
 
             if [ "$HITS" -gt 0 ] && [ -n "$ISSUE" ]; then
               HIT_DETAIL="$(grep -A 4 'HIT' /tmp/out.txt 2>/dev/null || true)"
-              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**$(printf '\xF0\x9F\x8E\xAF') 매집선행물리 relay [$MARKET]** hits=${HITS}" "$HIT_DETAIL")"
+              COMMENT_BODY="$(printf '%s\n\n\`\`\`\n%s\n\`\`\`' "**$(printf '\xF0\x9F\x8E\xAF') 留ㅼ쭛?좏뻾臾쇰━ relay [$MARKET]** hits=${HITS}" "$HIT_DETAIL")"
               gh issue comment "$ISSUE" --repo kiexpert/WkAutoQuant --body "$COMMENT_BODY" >/dev/null 2>&1 || true
             fi
 
