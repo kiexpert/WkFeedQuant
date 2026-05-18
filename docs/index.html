@@ -175,6 +175,17 @@
   .token-warn { color: var(--yellow); }
   .token-bad { color: var(--red); }
   .token-unknown { color: var(--muted); }
+  .mode-aggressive { color: var(--green); font-weight: 700; }
+  .mode-normal { color: var(--text); }
+  .mode-conservative { color: var(--yellow); font-weight: 700; }
+  .mode-halt { color: var(--red); font-weight: 700; }
+  .pnl-pos { color: var(--green); }
+  .pnl-neg { color: var(--red); }
+  .portfolio-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .portfolio-acct { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; min-width: 110px; }
+  .portfolio-acct-name { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .portfolio-acct-count { font-size: 22px; font-weight: 700; color: var(--blue); line-height: 1.2; }
+  .portfolio-acct-pnl { font-size: 11px; margin-top: 3px; }
 
   /* Next trigger */
   .next-box {
@@ -325,6 +336,8 @@
         <span class="label">Hits 생성</span>
         <span class="value" id="hits-age"><span class="spin">⏳</span></span>
       </div>
+      <div class="status-pill"><span class="label">Mode</span><span class="value" id="ai-mode"><span class="spin">⏳</span></span></div>
+      <div class="status-pill"><span class="label">포지션</span><span class="value" id="portfolio-total"><span class="spin">⏳</span></span></div>
     </div>
 
     <!-- Next trigger -->
@@ -362,6 +375,11 @@
       <div class="card-body" id="hits-body">
         <div class="muted"><span class="spin">⏳</span> 불러오는 중...</div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">📊 포트폴리오 요약 <span id="portfolio-age" class="muted small" style="font-weight:normal;margin-left:8px;"></span></div>
+      <div class="card-body" id="portfolio-body"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
     </div>
 
     <!-- Live log -->
@@ -519,6 +537,18 @@ function durStr(run) {
 }
 
 // ─── Render helpers ───────────────────────────────────────────────────────────
+function renderPortfolio(d){
+  if(!d)return'<div class="muted">데이터 없음</div>';
+  const pnlStr=(pct)=>{if(pct===undefined||pct===null)return'';const cls=pct>=0?'pnl-pos':'pnl-neg';return'<div class="portfolio-acct-pnl"><span class="'+cls+'">'+(pct>=0?'+':'')+pct.toFixed(2)+'%</span> avg PnL</div>';};
+  const accts=[{label:'Hantoo US',data:d.hantoo_us},{label:'Kiwoom Global',data:d.kiwoom_global},{label:'Hantoo KR',data:d.hantoo_kr}];
+  let html='<div class="portfolio-grid">';
+  for(const {label,data} of accts){if(!data)continue;html+='<div class="portfolio-acct"><div class="portfolio-acct-name">'+label+'</div><div class="portfolio-acct-count">'+data.positions+'</div><div class="muted small">종목</div>'+pnlStr(data.pnl_avg_pct)+'</div>';}
+  html+='</div>';
+  const mc={AGGRESSIVE:'mode-aggressive',NORMAL:'mode-normal',CONSERVATIVE:'mode-conservative',HALT:'mode-halt'}[d.mode]||'';
+  html+='<div style="margin-top:10px;font-size:11px;color:var(--muted)">AI <span style="color:var(--blue)">'+(d.ai_source||'?')+'</span> · Mode <span class="'+mc+'">'+(d.mode||'?')+'</span> · Maejip '+(d.maejip_hits||0)+'건 · Convergence '+(d.convergence_picks||0)+'건</div>';
+  return html;
+}
+
 function renderRuns(runs) {
   if (!runs.length) return '<div class="muted">실행 기록 없음</div>';
   return runs.map((r, i) => `
@@ -587,11 +617,12 @@ async function refresh() {
   // Last updated
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('ko-KR');
 
-  // Parallel: runs + hits + token
-  const [runsResult, hitsResult, tokenResult] = await Promise.allSettled([
+  // Parallel: runs + hits + token + portfolio
+  const [runsResult, hitsResult, tokenResult, portfolioResult] = await Promise.allSettled([
     fetchRuns(),
     ghContent(WKAQ, 'wavevault/maejip_realtime_hits.json'),
     ghContent(WKAQ, 'wavevault/hantoo_cache/hantoo_token_kr.json'),
+    ghContent(WKAQ, 'wavevault/balance_public_summary.json'),
   ]);
 
   // Runs
@@ -630,6 +661,20 @@ async function refresh() {
     document.getElementById('token-status').innerHTML = tokenDisplay(tokenResult.value);
   } else {
     document.getElementById('token-status').innerHTML = '<span class="token-unknown">오류</span>';
+  }
+
+  if (portfolioResult.status === 'fulfilled') {
+    const d = portfolioResult.value;
+    document.getElementById('portfolio-body').innerHTML = renderPortfolio(d);
+    const mc = {AGGRESSIVE:'mode-aggressive',NORMAL:'mode-normal',CONSERVATIVE:'mode-conservative',HALT:'mode-halt'}[d.mode]||'';
+    document.getElementById('ai-mode').innerHTML = '<span class="'+mc+'">'+(d.mode||'?')+'</span>';
+    const total=(d.hantoo_us?.positions||0)+(d.kiwoom_global?.positions||0)+(d.hantoo_kr?.positions||0);
+    document.getElementById('portfolio-total').textContent=total+'종목';
+    if(d.updated_at){const am=Math.floor((new Date()-new Date(d.updated_at))/60000);const ac=am>30?'var(--red)':am>20?'var(--yellow)':'var(--green)';document.getElementById('portfolio-age').innerHTML='<span style="color:'+ac+'">'+am+'분 전</span>';}
+  } else {
+    document.getElementById('portfolio-body').innerHTML='<div class="err-box">Portfolio 오류: '+portfolioResult.reason+'</div>';
+    document.getElementById('ai-mode').textContent='오류';
+    document.getElementById('portfolio-total').textContent='오류';
   }
 
   scheduleRefresh();
