@@ -644,12 +644,6 @@ function renderDoctor(d) {
   const oLabel = ({ok:'정상',warn:'경고',critical:'위험'})[d.overall] || d.overall || '?';
   document.getElementById('doctor-overall').innerHTML = '<span class="overall-pill ' + oc + '">' + oLabel + '</span>';
 
-  // Generation age
-  if (d.generated_at) {
-    const am = Math.floor((new Date() - new Date(d.generated_at)) / 60000);
-    document.getElementById('doctor-age').textContent = am + '분 전 갱신';
-  }
-
   // Build chips
   const chips = [];
   const dh = d.daemon_health || {};
@@ -725,17 +719,22 @@ function renderDoctor(d) {
   document.getElementById('doctor-heal').innerHTML =
     actions.map((a, i) =>
       '<button class="heal-btn" id="heal-btn-' + i + '" ' +
-      'onclick="triggerHeal(\'' + a.workflow + '\', \'' + a.repo + '\', ' + i + ')" ' +
+      'onclick="triggerHeal(\'' + a.workflow + '\', \'' + a.repo + '\', false, ' + i + ')" ' +
       'title="' + (a.desc || '') + '">🛠 ' + a.label + '</button>'
     ).join('') +
     '<div id="heal-status" class="muted small" style="margin-top:6px;"></div>';
+
 }
 
-async function triggerHeal(workflow, repo, btnIdx) {
+async function triggerHeal(workflow, repo, silent, btnIdx) {
+  if (typeof silent === 'number') {
+    btnIdx = silent;
+    silent = false;
+  }
   const btn = document.getElementById('heal-btn-' + btnIdx);
   const statusEl = document.getElementById('heal-status');
   if (btn) btn.disabled = true;
-  statusEl.textContent = 'Triggering ' + workflow + ' on ' + repo + '...';
+  if (statusEl && !silent) statusEl.textContent = 'Triggering ' + workflow + ' on ' + repo + '...';
   try {
     const r = await fetch(
       'https://api.github.com/repos/' + repo + '/actions/workflows/' + workflow + '/dispatches',
@@ -750,16 +749,46 @@ async function triggerHeal(workflow, repo, btnIdx) {
       }
     );
     if (r.status === 204) {
-      statusEl.innerHTML = '<span style="color:var(--green)">✅ ' + workflow + ' dispatched on ' + repo + '</span>';
+      if (!silent) alert('Triggered: ' + workflow);
+      if (statusEl && !silent) statusEl.innerHTML = '<span style="color:var(--green)">✅ ' + workflow + ' dispatched on ' + repo + '</span>';
     } else {
       const txt = await r.text();
-      statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + r.status + ' ' + txt.slice(0,140) + '</span>';
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + r.status + ' ' + txt.slice(0,140) + '</span>';
     }
   } catch (e) {
-    statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + e + '</span>';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + e + '</span>';
   } finally {
     setTimeout(() => { if (btn) btn.disabled = false; }, 15000);
   }
+}
+
+function autoHeal(d) {
+  if (!d) return;
+  var p = getPAT(); if (!p) return;
+  var now = Date.now(), COOL = 300000;
+  var log = {};
+  try { log = JSON.parse(localStorage.getItem('wkwave_heal_log') || '{}'); } catch(e) {}
+  function ok(id) { return !log[id] || (now - log[id]) > COOL; }
+  function heal(id, wf, repo, msg) {
+    if (!ok(id)) return;
+    log[id] = now;
+    try { localStorage.setItem('wkwave_heal_log', JSON.stringify(log)); } catch(e) {}
+    triggerHeal(wf, repo, true);
+    var el = document.getElementById('doctor-heal');
+    if (el) {
+      var n = document.createElement('div');
+      n.style.cssText = 'color:var(--yellow);font-size:11px;margin-bottom:4px';
+      n.textContent = 'Auto-heal: ' + msg;
+      el.insertBefore(n, el.firstChild);
+      setTimeout(function() { try { el.removeChild(n); } catch(e) {} }, 30000);
+    }
+  }
+  if (d.hts_watcher && d.hts_watcher.status !== 'ok')
+    heal('hts', 'backtest_quant_validator.yml', 'kiexpert/WkAutoQuant', 'HTS watcher dead');
+  if (d.maejip && d.maejip.stale)
+    heal('maejip', 'maejip_relay.yml', 'kiexpert/WkFeedQuant', 'maejip stale');
+  if (d.daemon_health && d.daemon_health.status !== 'ok')
+    heal('daemon', 'backtest_quant_validator.yml', 'kiexpert/WkAutoQuant', 'daemon issue');
 }
 
 function renderRuns(runs) {
@@ -879,7 +908,13 @@ async function refresh() {
 
   // Doctor Card
   if (doctorResult.status === 'fulfilled') {
-    renderDoctor(doctorResult.value);
+    const d = doctorResult.value;
+    renderDoctor(d);
+    autoHeal(d);
+    if (d.generated_at) {
+      const am = Math.floor((new Date() - new Date(d.generated_at)) / 60000);
+      document.getElementById('doctor-age').textContent = am + '분 전 갱신';
+    }
   } else {
     document.getElementById('doctor-grid').innerHTML = '<div class="err-box">Doctor 오류: ' + doctorResult.reason + '</div>';
     document.getElementById('doctor-overall').innerHTML = '';
