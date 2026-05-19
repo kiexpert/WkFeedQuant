@@ -175,6 +175,71 @@
   .token-warn { color: var(--yellow); }
   .token-bad { color: var(--red); }
   .token-unknown { color: var(--muted); }
+
+  /* Doctor Card */
+  .health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .health-chip {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 3px solid var(--border);
+  }
+  .hc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .hc-value { font-size: 13px; font-weight: 600; color: var(--text); }
+  .hc-sub   { font-size: 11px; color: var(--muted); }
+  .h-ok      { border-left-color: var(--green); }
+  .h-ok      .hc-value { color: var(--green); }
+  .h-warn    { border-left-color: var(--yellow); }
+  .h-warn    .hc-value { color: var(--yellow); }
+  .h-dead    { border-left-color: var(--red); }
+  .h-dead    .hc-value { color: var(--red); }
+  .h-unknown { border-left-color: var(--muted); }
+  .h-unknown .hc-value { color: var(--muted); }
+  .heal-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--blue);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+  .heal-btn:hover { border-color: var(--blue); background: rgba(88,166,255,0.1); }
+  .heal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .tier-chip {
+    display: inline-block;
+    background: rgba(63,185,80,0.12);
+    color: var(--green);
+    border: 1px solid rgba(63,185,80,0.3);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 11px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+  }
+  .overall-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 8px;
+  }
+  .overall-ok       { background: rgba(63,185,80,0.15);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
+  .overall-warn     { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+  .overall-critical { background: rgba(248,81,73,0.15);  color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
   .mode-aggressive { color: var(--green); font-weight: 700; }
   .mode-normal { color: var(--text); }
   .mode-conservative { color: var(--yellow); font-weight: 700; }
@@ -369,6 +434,16 @@
       </div>
     </div>
 
+    <!-- Doctor Card -->
+    <div class="card" id="doctor-card">
+      <div class="card-header">🩺 닥터카드 — 시스템 헬스 <span id="doctor-overall"></span> <span id="doctor-age" class="muted small" style="font-weight:normal;margin-left:8px;"></span></div>
+      <div class="card-body" id="doctor-body">
+        <div id="doctor-grid"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
+        <div id="doctor-formula" class="muted small" style="margin-top:8px;"></div>
+        <div id="doctor-heal" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
     <!-- Hits -->
     <div class="card">
       <div class="card-header">🎯 매수 후보 (maejip_realtime_hits)</div>
@@ -549,6 +624,144 @@ function renderPortfolio(d){
   return html;
 }
 
+function hClass(s) {
+  return 'h-' + (['ok','warn','dead','unknown'].includes(s) ? s : 'unknown');
+}
+function ageStr(h) {
+  if (h === null || h === undefined) return '-';
+  if (h < 1) return Math.round(h*60) + 'm';
+  if (h < 24) return h.toFixed(1) + 'h';
+  return Math.floor(h/24) + 'd';
+}
+
+function renderDoctor(d) {
+  if (!d) {
+    document.getElementById('doctor-grid').innerHTML = '<div class="muted">데이터 없음</div>';
+    return;
+  }
+  // Overall pill
+  const oc = 'overall-' + (d.overall || 'warn');
+  const oLabel = ({ok:'정상',warn:'경고',critical:'위험'})[d.overall] || d.overall || '?';
+  document.getElementById('doctor-overall').innerHTML = '<span class="overall-pill ' + oc + '">' + oLabel + '</span>';
+
+  // Generation age
+  if (d.generated_at) {
+    const am = Math.floor((new Date() - new Date(d.generated_at)) / 60000);
+    document.getElementById('doctor-age').textContent = am + '분 전 갱신';
+  }
+
+  // Build chips
+  const chips = [];
+  const dh = d.daemon_health || {};
+  chips.push({
+    cls: hClass(dh.status),
+    label: 'Daemon',
+    value: (dh.status || '?').toUpperCase(),
+    sub: 'last ' + ageStr(dh.age_hours) + ' · runs ' + (dh.run_count_today || 0) + '/day',
+  });
+  const ai = (d.ai_intensity || {});
+  for (const m of ['kr','us']) {
+    const v = ai[m] || {};
+    chips.push({
+      cls: hClass(v.status),
+      label: 'AI ' + m.toUpperCase(),
+      value: (v.mode || '?') + ' · ' + (v.source || '?'),
+      sub: ageStr(v.age_hours) + ' ago',
+    });
+  }
+  const fm = d.formula || {};
+  chips.push({
+    cls: hClass(fm.status),
+    label: 'Formula',
+    value: 'A=' + (fm.tier_a || 0) + ' B=' + (fm.tier_b || 0),
+    sub: ageStr(fm.age_hours) + ' · noise ' + (fm.noise || 0),
+  });
+  const mj = d.maejip || {};
+  chips.push({
+    cls: hClass(mj.status),
+    label: 'Maejip Hits',
+    value: (mj.hits || 0) + '건',
+    sub: ageStr(mj.age_hours) + ' ago',
+  });
+  const hw = d.hts_watcher || {};
+  chips.push({
+    cls: hClass(hw.status),
+    label: 'HTS Watcher',
+    value: (hw.status || '?').toUpperCase(),
+    sub: hw.age_min != null ? hw.age_min + 'min ago' : '-',
+  });
+  const providers = d.ai_providers || {};
+  const provLine = Object.keys(providers).map(k => k + '=' + providers[k]).join(' · ');
+  chips.push({
+    cls: hClass(Object.values(providers).includes('fail') ? 'dead' : 'ok'),
+    label: 'AI Providers',
+    value: 'inferred',
+    sub: provLine,
+  });
+
+  document.getElementById('doctor-grid').innerHTML =
+    '<div class="health-grid">' +
+    chips.map(c =>
+      '<div class="health-chip ' + c.cls + '">' +
+      '<div class="hc-label">' + c.label + '</div>' +
+      '<div class="hc-value">' + c.value + '</div>' +
+      '<div class="hc-sub">' + c.sub + '</div>' +
+      '</div>'
+    ).join('') +
+    '</div>';
+
+  // Top Tier A
+  let formulaHtml = '';
+  const topA = (d.formula && d.formula.top_a) || [];
+  if (topA.length) {
+    formulaHtml = '<div>Tier A Top: ' + topA.map(t =>
+      '<span class="tier-chip">' + (t.code || '?') + ' ' + (t.score != null ? t.score.toFixed(2) : '-') + '</span>'
+    ).join('') + '</div>';
+  }
+  document.getElementById('doctor-formula').innerHTML = formulaHtml;
+
+  // Heal buttons
+  const actions = d.heal_actions || [];
+  document.getElementById('doctor-heal').innerHTML =
+    actions.map((a, i) =>
+      '<button class="heal-btn" id="heal-btn-' + i + '" ' +
+      'onclick="triggerHeal(\'' + a.workflow + '\', \'' + a.repo + '\', ' + i + ')" ' +
+      'title="' + (a.desc || '') + '">🛠 ' + a.label + '</button>'
+    ).join('') +
+    '<div id="heal-status" class="muted small" style="margin-top:6px;"></div>';
+}
+
+async function triggerHeal(workflow, repo, btnIdx) {
+  const btn = document.getElementById('heal-btn-' + btnIdx);
+  const statusEl = document.getElementById('heal-status');
+  if (btn) btn.disabled = true;
+  statusEl.textContent = 'Triggering ' + workflow + ' on ' + repo + '...';
+  try {
+    const r = await fetch(
+      'https://api.github.com/repos/' + repo + '/actions/workflows/' + workflow + '/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'token ' + pat,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ref: 'main' }),
+      }
+    );
+    if (r.status === 204) {
+      statusEl.innerHTML = '<span style="color:var(--green)">✅ ' + workflow + ' dispatched on ' + repo + '</span>';
+    } else {
+      const txt = await r.text();
+      statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + r.status + ' ' + txt.slice(0,140) + '</span>';
+    }
+  } catch (e) {
+    statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + e + '</span>';
+  } finally {
+    setTimeout(() => { if (btn) btn.disabled = false; }, 15000);
+  }
+}
+
 function renderRuns(runs) {
   if (!runs.length) return '<div class="muted">실행 기록 없음</div>';
   return runs.map((r, i) => `
@@ -617,12 +830,13 @@ async function refresh() {
   // Last updated
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('ko-KR');
 
-  // Parallel: runs + hits + token + portfolio
-  const [runsResult, hitsResult, tokenResult, portfolioResult] = await Promise.allSettled([
+  // Parallel: runs + hits + token + portfolio + doctor
+  const [runsResult, hitsResult, tokenResult, portfolioResult, doctorResult] = await Promise.allSettled([
     fetchRuns(),
     ghContent(WKAQ, 'wavevault/maejip_realtime_hits.json'),
     ghContent(WKAQ, 'wavevault/hantoo_cache/hantoo_token_kr.json'),
     ghContent(WKAQ, 'wavevault/balance_public_summary.json'),
+    ghContent(WKAQ, 'wavevault/system_health_summary.json'),
   ]);
 
   // Runs
@@ -661,6 +875,14 @@ async function refresh() {
     document.getElementById('token-status').innerHTML = tokenDisplay(tokenResult.value);
   } else {
     document.getElementById('token-status').innerHTML = '<span class="token-unknown">오류</span>';
+  }
+
+  // Doctor Card
+  if (doctorResult.status === 'fulfilled') {
+    renderDoctor(doctorResult.value);
+  } else {
+    document.getElementById('doctor-grid').innerHTML = '<div class="err-box">Doctor 오류: ' + doctorResult.reason + '</div>';
+    document.getElementById('doctor-overall').innerHTML = '';
   }
 
   if (portfolioResult.status === 'fulfilled') {
