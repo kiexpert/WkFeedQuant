@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
 
+# concurrency guard for stale heartbeat self-chain
 concurrency:
   group: maejip-relay
   cancel-in-progress: false
