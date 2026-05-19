@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: maejip-relay
+  cancel-in-progress: false
+
 env:
   GH_TOKEN:            ${{ secrets.GH_PAT }}
   HANTOO_APPKEY_KR:    ${{ secrets.HANTOO_APPKEY_KR }}
@@ -24,6 +28,7 @@ env:
 jobs:
   relay:
     runs-on: ubuntu-latest
+    timeout-minutes: 18
 
     steps:
       - name: setup-python
@@ -53,3 +58,38 @@ jobs:
           else echo '.'; exit 0; fi
           cd wkaq
           python scripts/wkwave_daemon.py --market "$MARKET" --run-id "$GITHUB_RUN_ID"
+
+      - name: Conditional self-chain on stale heartbeat
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            https://raw.githubusercontent.com/kiexpert/WkAutoQuant/main/wavevault/daemon_health.json \
+            -o daemon_health.json || {
+              echo "::warning::daemon_health.json unavailable"
+              exit 0
+            }
+          AGE=$(python - <<'PY'
+          import datetime as dt
+          import json
+
+          with open("daemon_health.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+          last_success = data.get("last_success") or data.get("last_run")
+          if not last_success:
+              print(999999)
+              raise SystemExit
+          ts = dt.datetime.fromisoformat(last_success.replace("Z", "+00:00"))
+          if ts.tzinfo is None:
+              ts = ts.replace(tzinfo=dt.timezone.utc)
+          now = dt.datetime.now(dt.timezone.utc)
+          print(int((now - ts.astimezone(dt.timezone.utc)).total_seconds()))
+          PY
+          )
+          echo "heartbeat age=${AGE}s"
+          if [ "$AGE" -gt 900 ]; then
+            sleep 600
+            gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
+          else
+            echo "heartbeat fresh; skip self-chain"
+          fi
