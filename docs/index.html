@@ -444,6 +444,12 @@
       </div>
     </div>
 
+    <!-- Daily Issue -->
+    <div class="card" id="issue-card">
+      <div class="card-header">📋 오늘의 이슈 <span id="issue-meta" class="muted small" style="font-weight:normal;margin-left:8px;"></span><a id="issue-link" href="#" target="_blank" style="margin-left:8px;font-size:11px;color:var(--blue);display:none">→ GitHub</a></div>
+      <div class="card-body" id="issue-body"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
+    </div>
+
     <!-- Hits -->
     <div class="card">
       <div class="card-header">🎯 매수 후보 (maejip_realtime_hits)</div>
@@ -692,6 +698,15 @@ function renderDoctor(d) {
     value: 'inferred',
     sub: provLine,
   });
+  const tc = d.trade_cycle || {};
+  if (tc.sell_failure_detected || tc.sell_attempts > 0) {
+    chips.push({
+      cls: tc.sell_failure_detected ? 'h-dead' : 'h-warn',
+      label: 'SELL',
+      value: tc.sell_failure_detected ? '❌ FAIL' : '⚠️ PARTIAL',
+      sub: 'tried=' + (tc.sell_attempts||0) + ' filled=' + (tc.sell_orders||0),
+    });
+  }
 
   document.getElementById('doctor-grid').innerHTML =
     '<div class="health-grid">' +
@@ -789,6 +804,10 @@ function autoHeal(d) {
     heal('maejip', 'maejip_relay.yml', 'kiexpert/WkFeedQuant', 'maejip stale');
   if (d.daemon_health && d.daemon_health.status !== 'ok')
     heal('daemon', 'backtest_quant_validator.yml', 'kiexpert/WkAutoQuant', 'daemon issue');
+  if (d.trade_cycle && d.trade_cycle.sell_failure_detected)
+    heal('sell_fail', 'market_15m_us.yml', 'kiexpert/WkAutoQuant', 'sell failure — retry US cycle');
+  if (d.hts_watcher && d.hts_watcher.status === 'dead')
+    heal('hts_dead', 'backtest_quant_validator.yml', 'kiexpert/WkAutoQuant', 'HTS watcher dead');
 }
 
 function renderRuns(runs) {
@@ -860,12 +879,13 @@ async function refresh() {
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('ko-KR');
 
   // Parallel: runs + hits + token + portfolio + doctor
-  const [runsResult, hitsResult, tokenResult, portfolioResult, doctorResult] = await Promise.allSettled([
+  const [runsResult, hitsResult, tokenResult, portfolioResult, doctorResult, issueResult] = await Promise.allSettled([
     fetchRuns(),
     ghContent(WKAQ, 'wavevault/maejip_realtime_hits.json'),
     ghContent(WKAQ, 'wavevault/hantoo_cache/hantoo_token_kr.json'),
     ghContent(WKAQ, 'wavevault/balance_public_summary.json'),
     ghContent(WKAQ, 'wavevault/system_health_summary.json'),
+    fetchDailyIssue(),
   ]);
 
   // Runs
@@ -920,6 +940,14 @@ async function refresh() {
     document.getElementById('doctor-overall').innerHTML = '';
   }
 
+  // Daily Issue
+  if (issueResult && issueResult.status === 'fulfilled') {
+    renderDailyIssue(issueResult.value);
+  } else {
+    const el = document.getElementById('issue-body');
+    if (el) el.innerHTML = '<div class="muted">이슈 불러오기 실패</div>';
+  }
+
   if (portfolioResult.status === 'fulfilled') {
     const d = portfolioResult.value;
     document.getElementById('portfolio-body').innerHTML = renderPortfolio(d);
@@ -935,6 +963,41 @@ async function refresh() {
   }
 
   scheduleRefresh();
+}
+
+async function fetchDailyIssue() {
+  try {
+    const issues = await ghGet('https://api.github.com/repos/' + WKAQ + '/issues?labels=daily-briefing&state=open&per_page=1');
+    return (issues && issues.length > 0) ? issues[0] : null;
+  } catch(e) { return null; }
+}
+
+function renderDailyIssue(issue) {
+  const el = document.getElementById('issue-body');
+  const meta = document.getElementById('issue-meta');
+  const link = document.getElementById('issue-link');
+  if (!issue) { el.innerHTML = '<div class="muted">이슈 없음</div>'; return; }
+  meta.textContent = '#' + issue.number;
+  link.href = issue.html_url; link.style.display = '';
+  const body = issue.body || '', lines = body.split('
+');
+  const modeMatch = (body.match(/\*\*AI 모드\*\*.*?(AGGRESSIVE|NORMAL|CONSERVATIVE|HALT)/) || []);
+  const mode = modeMatch[1] || null;
+  const modeColor = {AGGRESSIVE:'var(--green)',NORMAL:'var(--blue)',CONSERVATIVE:'var(--yellow)',HALT:'var(--red)'}[mode] || 'var(--muted)';
+  const sellFails = (body.match(/SELL FAIL/g) || []).length;
+  let actions = [], inAct = false;
+  for (const l of lines) {
+    if (l.includes('Action Items')) { inAct = true; continue; }
+    if (inAct && l.startsWith('##')) break;
+    if (inAct && l.match(/^\d+\.\s|^[-*]\s/)) actions.push(l.replace(/^\d+\.\s*|^[-*]\s*/,'').replace(/\*\*/g,'').trim());
+    if (actions.length >= 3) break;
+  }
+  let html = '<div style="font-size:12px;line-height:1.6">';
+  if (mode) html += '<div style="margin-bottom:6px">AI 모드: <strong style="color:' + modeColor + '">' + mode + '</strong></div>';
+  if (sellFails > 0) html += '<div style="color:var(--red);margin-bottom:6px">⚠️ SELL FAIL ' + sellFails + '건 감지</div>';
+  if (actions.length) html += '<div><strong>Action:</strong><br>' + actions.map((a,i) => '<span class="muted">' + (i+1) + '. ' + a.substring(0,80) + '</span>').join('<br>') + '</div>';
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 async function fetchRuns() {
