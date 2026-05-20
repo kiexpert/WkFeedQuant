@@ -474,7 +474,7 @@
     </div>
 
     <div class="card" id="signal-card">
-      <div class="card-header">📈 신호 분석 <span id="signal-age" class="muted small" style="font-weight:normal;margin-left:8px;"></span></div>
+      <div class="card-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">📈 신호 분석 <span id="signal-age" class="muted small" style="font-weight:normal"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn-sm" id="sig-sort-fabio" onclick="_renderSignalTable('fabio')">Fabio순</button><button class="btn-sm" id="sig-sort-score" onclick="_renderSignalTable('score')">score순</button><button class="btn-sm" id="sig-sort-fwd" onclick="_renderSignalTable('fwd')">수익률순</button></span></div>
       <div class="card-body" id="signal-body"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
     </div>
 
@@ -879,6 +879,48 @@ function tokenDisplay(tokenObj) {
   return `<span class="token-ok">OK ${diffH.toFixed(1)}h</span>`;
 }
 
+let _sigFabio = {}, _sigScoreMap = {};
+
+function renderSignalTable(sortKey) {
+  const el = document.getElementById('signal-body');
+  if (!el) return;
+  const fabio = _sigFabio, scoreMap = _sigScoreMap;
+  const codes = Object.keys(fabio).filter(c => !['_meta','generated_at'].includes(c));
+  if (!codes.length) return;
+  const go = {A:0,B:1,C:2,D:3};
+  if (sortKey === 'score') {
+    codes.sort((a,b) => (scoreMap[b]?.score||0) - (scoreMap[a]?.score||0));
+  } else if (sortKey === 'fwd') {
+    codes.sort((a,b) => (scoreMap[b]?.fwd||0) - (scoreMap[a]?.fwd||0));
+  } else {
+    codes.sort((a,b) => {
+      const d = (go[fabio[a]?.grade||'D']||3) - (go[fabio[b]?.grade||'D']||3);
+      return d !== 0 ? d : (scoreMap[b]?.score||0) - (scoreMap[a]?.score||0);
+    });
+  }
+  ['fabio','score','fwd'].forEach(k => {
+    const btn = document.getElementById('sig-sort-'+k);
+    if (btn) btn.style.fontWeight = k === (sortKey||'fabio') ? 'bold' : 'normal';
+  });
+  const ti = {A:'🏆',B:'🟢',C:'🟡',noise:'🔴'};
+  const fc = {A:'sig-a',B:'sig-b',C:'sig-c',D:'sig-d'};
+  let rows = '';
+  for (const code of codes.slice(0,35)) {
+    const f = fabio[code]||{}, sc = scoreMap[code];
+    const g = f.grade||'?', nm = (f.name||code).slice(0,10);
+    const tier = sc ? sc.tier.toUpperCase() : '?';
+    const score = sc ? sc.score.toFixed(3) : '-';
+    const recent = sc ? (sc.recent*100).toFixed(0)+'%' : '-';
+    const bw = sc ? Math.round(sc.score*80) : 0;
+    const fwd = sc&&sc.fwd ? (sc.fwd>0?'+':'')+sc.fwd.toFixed(1)+'%' : '-';
+    const allow = !sc ? '✅' : (sc.score>=0.4?'✅':(sc.score>=0.15?'⚠️':'⛔'));
+    const fclr = sc&&sc.fwd>0 ? 'var(--green)' : 'var(--red)';
+    rows += `<tr><td><span class="${fc[g]||'sig-noise'}">${g}</span></td><td>${nm}</td><td style="color:var(--muted);font-size:11px">${code}</td><td>${tier!=='?'?(ti[tier.toLowerCase()]||'')+tier:'❓'}</td><td><div class="sig-bar" style="width:${bw}px"></div> ${score}</td><td>${recent}</td><td style="color:${fclr}">${fwd}</td><td>${allow}</td></tr>`;
+  }
+  el.innerHTML = `<div style="overflow-x:auto"><table class="sig-table"><thead><tr><th>Fabio</th><th>종목</th><th>코드</th><th>수식Tier</th><th>score</th><th>최근적중</th><th>평균수익</th><th>매수</th></tr></thead><tbody>${rows}</tbody></table></div><div class="muted small" style="margin-top:6px">✅≥0.4허용 &nbsp; ⚠️0.15-0.4조건부 &nbsp; ⛔&lt;0.15차단</div>`;
+}
+window._renderSignalTable = renderSignalTable;
+
 async function loadSignalCard() {
   const el = document.getElementById('signal-body');
   const ageEl = document.getElementById('signal-age');
@@ -888,35 +930,14 @@ async function loadSignalCard() {
       ghContent(WKAQ, 'wavevault/fabio_scores.json').catch(() => ({})),
       ghContent(WKAQ, 'wavevault/formula_compatible_stocks.json').catch(() => ({})),
     ]);
-    const scoreMap = {};
+    _sigFabio = fabio;
+    _sigScoreMap = {};
     for (const [tier, stocks] of Object.entries(formula.tiers || {})) {
-      for (const s of stocks) scoreMap[s.code] = { tier, score: s.score||0, recent: s.recent_pass_rate||0, fwd: s.avg_fwd_return_pct||0 };
-    }
-    const codes = Object.keys(fabio).filter(c => !['_meta','generated_at'].includes(c));
-    if (!codes.length) { el.innerHTML = '<div class="muted">데이터 없음</div>'; return; }
-    const go = {A:0,B:1,C:2,D:3};
-    codes.sort((a,b) => {
-      const d = (go[fabio[a]?.grade||'D']||3) - (go[fabio[b]?.grade||'D']||3);
-      return d !== 0 ? d : (scoreMap[b]?.score||0) - (scoreMap[a]?.score||0);
-    });
-    const ti = {A:'🏆',B:'🟢',C:'🟡',noise:'🔴'};
-    const fc = {A:'sig-a',B:'sig-b',C:'sig-c',D:'sig-d'};
-    let rows = '';
-    for (const code of codes.slice(0,35)) {
-      const f = fabio[code]||{}, sc = scoreMap[code];
-      const g = f.grade||'?', nm = (f.name||code).slice(0,10);
-      const tier = sc ? sc.tier.toUpperCase() : '?';
-      const score = sc ? sc.score.toFixed(3) : '-';
-      const recent = sc ? (sc.recent*100).toFixed(0)+'%' : '-';
-      const bw = sc ? Math.round(sc.score*80) : 0;
-      const fwd = sc&&sc.fwd ? (sc.fwd>0?'+':'')+sc.fwd.toFixed(1)+'%' : '-';
-      const allow = !sc ? '✅' : (sc.score>=0.4?'✅':(sc.score>=0.15?'⚠️':'⛔'));
-      const fclr = sc&&sc.fwd>0 ? 'var(--green)' : 'var(--red)';
-      rows += `<tr><td><span class="${fc[g]||'sig-noise'}">${g}</span></td><td>${nm}</td><td style="color:var(--muted);font-size:11px">${code}</td><td>${tier!=='?'?(ti[tier.toLowerCase()]||'')+tier:'❓'}</td><td><div class="sig-bar" style="width:${bw}px"></div> ${score}</td><td>${recent}</td><td style="color:${fclr}">${fwd}</td><td>${allow}</td></tr>`;
+      for (const s of stocks) _sigScoreMap[s.code] = { tier, score: s.score||0, recent: s.recent_pass_rate||0, fwd: s.avg_fwd_return_pct||0 };
     }
     const gen = formula.generated_at ? new Date(formula.generated_at).toLocaleString('ko-KR') : '';
     if (ageEl) ageEl.textContent = gen ? gen : '';
-    el.innerHTML = `<div style="overflow-x:auto"><table class="sig-table"><thead><tr><th>Fabio</th><th>종목</th><th>코드</th><th>수식Tier</th><th>score</th><th>최근적중</th><th>평균수익</th><th>매수</th></tr></thead><tbody>${rows}</tbody></table></div><div class="muted small" style="margin-top:6px">✅≥0.4허용 &nbsp; ⚠️0.15-0.4조건부 &nbsp; ⛔&lt;0.15차단</div>`;
+    renderSignalTable('fabio');
   } catch(e) {
     el.innerHTML = `<div class="muted">🔒 ${e.message}</div>`;
   }
