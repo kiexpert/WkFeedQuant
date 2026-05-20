@@ -62,6 +62,16 @@
   #auth-gate { display: none; }
   #auth-gate.show { display: block; }
   .auth-form { max-width: 480px; }
+  .sig-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .sig-table th { color:var(--muted); font-weight:normal; padding:3px 6px; text-align:left; border-bottom:1px solid var(--border); }
+  .sig-table td { padding:4px 6px; border-bottom:1px solid var(--border); }
+  .sig-table tr:last-child td { border-bottom:none; }
+  .sig-a { color:#4caf50; font-weight:700; }
+  .sig-b { color:#8bc34a; }
+  .sig-c { color:#ff9800; }
+  .sig-d { color:#f44336; }
+  .sig-noise { color:var(--muted); }
+  .sig-bar { display:inline-block; height:8px; border-radius:2px; background:var(--blue); vertical-align:middle; }
   .auth-form input {
     width: 100%;
     background: var(--bg3);
@@ -461,6 +471,11 @@
     <div class="card">
       <div class="card-header">📊 포트폴리오 요약 <span id="portfolio-age" class="muted small" style="font-weight:normal;margin-left:8px;"></span></div>
       <div class="card-body" id="portfolio-body"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
+    </div>
+
+    <div class="card" id="signal-card">
+      <div class="card-header">📈 신호 분석 <span id="signal-age" class="muted small" style="font-weight:normal;margin-left:8px;"></span></div>
+      <div class="card-body" id="signal-body"><div class="muted"><span class="spin">⏳</span> 불러오는 중...</div></div>
     </div>
 
     <!-- Live log -->
@@ -864,6 +879,49 @@ function tokenDisplay(tokenObj) {
   return `<span class="token-ok">OK ${diffH.toFixed(1)}h</span>`;
 }
 
+async function loadSignalCard() {
+  const el = document.getElementById('signal-body');
+  const ageEl = document.getElementById('signal-age');
+  if (!el) return;
+  try {
+    const [fabio, formula] = await Promise.all([
+      ghContent(WKAQ, 'wavevault/fabio_scores.json').catch(() => ({})),
+      ghContent(WKAQ, 'wavevault/formula_compatible_stocks.json').catch(() => ({})),
+    ]);
+    const scoreMap = {};
+    for (const [tier, stocks] of Object.entries(formula.tiers || {})) {
+      for (const s of stocks) scoreMap[s.code] = { tier, score: s.score||0, recent: s.recent_pass_rate||0, fwd: s.avg_fwd_return_pct||0 };
+    }
+    const codes = Object.keys(fabio).filter(c => !['_meta','generated_at'].includes(c));
+    if (!codes.length) { el.innerHTML = '<div class="muted">데이터 없음</div>'; return; }
+    const go = {A:0,B:1,C:2,D:3};
+    codes.sort((a,b) => {
+      const d = (go[fabio[a]?.grade||'D']||3) - (go[fabio[b]?.grade||'D']||3);
+      return d !== 0 ? d : (scoreMap[b]?.score||0) - (scoreMap[a]?.score||0);
+    });
+    const ti = {A:'🏆',B:'🟢',C:'🟡',noise:'🔴'};
+    const fc = {A:'sig-a',B:'sig-b',C:'sig-c',D:'sig-d'};
+    let rows = '';
+    for (const code of codes.slice(0,35)) {
+      const f = fabio[code]||{}, sc = scoreMap[code];
+      const g = f.grade||'?', nm = (f.name||code).slice(0,10);
+      const tier = sc ? sc.tier.toUpperCase() : '?';
+      const score = sc ? sc.score.toFixed(3) : '-';
+      const recent = sc ? (sc.recent*100).toFixed(0)+'%' : '-';
+      const bw = sc ? Math.round(sc.score*80) : 0;
+      const fwd = sc&&sc.fwd ? (sc.fwd>0?'+':'')+sc.fwd.toFixed(1)+'%' : '-';
+      const allow = !sc ? '✅' : (sc.score>=0.4?'✅':(sc.score>=0.15?'⚠️':'⛔'));
+      const fclr = sc&&sc.fwd>0 ? 'var(--green)' : 'var(--red)';
+      rows += `<tr><td><span class="${fc[g]||'sig-noise'}">${g}</span></td><td>${nm}</td><td style="color:var(--muted);font-size:11px">${code}</td><td>${tier!=='?'?(ti[tier.toLowerCase()]||'')+tier:'❓'}</td><td><div class="sig-bar" style="width:${bw}px"></div> ${score}</td><td>${recent}</td><td style="color:${fclr}">${fwd}</td><td>${allow}</td></tr>`;
+    }
+    const gen = formula.generated_at ? new Date(formula.generated_at).toLocaleString('ko-KR') : '';
+    if (ageEl) ageEl.textContent = gen ? gen : '';
+    el.innerHTML = `<div style="overflow-x:auto"><table class="sig-table"><thead><tr><th>Fabio</th><th>종목</th><th>코드</th><th>수식Tier</th><th>score</th><th>최근적중</th><th>평균수익</th><th>매수</th></tr></thead><tbody>${rows}</tbody></table></div><div class="muted small" style="margin-top:6px">✅≥0.4허용 &nbsp; ⚠️0.15-0.4조건부 &nbsp; ⛔&lt;0.15차단</div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="muted">🔒 ${e.message}</div>`;
+  }
+}
+
 // ─── Main fetch & render ──────────────────────────────────────────────────────
 async function refresh() {
   clearTimeout(refreshTimer);
@@ -877,6 +935,12 @@ async function refresh() {
 
   // Last updated
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('ko-KR');
+
+  // Signal analysis card (independent fetch, fire-and-forget)
+  loadSignalCard();
+
+  // Signal analysis card (independent fetch, fire-and-forget)
+  loadSignalCard();
 
   // Parallel: runs + hits + token + portfolio + doctor
   const [runsResult, hitsResult, tokenResult, portfolioResult, doctorResult, issueResult] = await Promise.allSettled([
