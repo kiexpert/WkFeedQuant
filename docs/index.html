@@ -1043,8 +1043,7 @@ function renderDailyIssue(issue) {
   if (!issue) { el.innerHTML = '<div class="muted">이슈 없음</div>'; return; }
   meta.textContent = '#' + issue.number;
   link.href = issue.html_url; link.style.display = '';
-  const body = issue.body || '', lines = body.split('
-');
+  const body = issue.body || '', lines = body.split('\n');
   const modeMatch = (body.match(/\*\*AI 모드\*\*.*?(AGGRESSIVE|NORMAL|CONSERVATIVE|HALT)/) || []);
   const mode = modeMatch[1] || null;
   const modeColor = {AGGRESSIVE:'var(--green)',NORMAL:'var(--blue)',CONSERVATIVE:'var(--yellow)',HALT:'var(--red)'}[mode] || 'var(--muted)';
