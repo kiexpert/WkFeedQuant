@@ -380,8 +380,27 @@
           <p class="muted small" style="margin-top:10px;">
             <a href="https://github.com/settings/tokens/new?description=WkWave+Viewer&scopes=repo,workflow" target="_blank">→ 새 토큰 발급 (GitHub)</a>
           </p>
+          <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+            <p class="muted small mb8">또는 GitHub 계정으로 바로 로그인 (Device Flow):</p>
+            <button class="btn-sm" id="gh-login-btn" onclick="ghDeviceLogin()">🔑 GitHub 로그인</button>
+            <span id="gh-user" style="margin-left:8px;font-size:12px;"></span>
+          </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- DEVICE FLOW MODAL -->
+<div id="gh-auth-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="max-width:420px;width:90%;margin:0;">
+    <div class="card-header">🔑 GitHub Device 로그인</div>
+    <div class="card-body" style="text-align:center;">
+      <p class="muted small mb8">아래 코드를 GitHub 인증 페이지에 입력하세요.</p>
+      <div id="gh-user-code" style="font-size:28px;font-weight:700;letter-spacing:4px;color:var(--blue);margin:12px 0;font-family:monospace;">----&nbsp;----</div>
+      <button class="btn" id="gh-verify-link" onclick="window.open(this.dataset.uri,'_blank')">→ GitHub 인증 페이지 열기</button>
+      <p class="muted small" id="gh-poll-status" style="margin-top:12px;">대기 중...</p>
+      <button class="btn-sm" onclick="closeAuthModal()" style="margin-top:8px;">취소</button>
     </div>
   </div>
 </div>
@@ -509,7 +528,7 @@ let liveLogTimer = null;
 let countdownSec = REFRESH_SEC;
 
 // ─── PAT storage ──────────────────────────────────────────────────────────────
-function getPAT()  { return localStorage.getItem('wkwave_pat') || ''; }
+function getPAT()  { return localStorage.getItem('wkwave_pat') || localStorage.getItem('gh_token') || ''; }
 function savePAT() {
   const v = document.getElementById('pat-input').value.trim();
   if (!v) { showAuthErr('토큰을 입력하세요.'); return; }
@@ -525,6 +544,118 @@ function showAuthErr(msg) {
   const el = document.getElementById('auth-err');
   el.textContent = msg;
   el.style.display = 'inline-block';
+}
+
+// ─── GitHub Device Flow login ───────────────────────────────────────────────────
+// PUBLIC REPO: client_id is SAFE to expose (Device Flow has no client_secret by design).
+// TODO: create an OAuth App at https://github.com/settings/developers (New OAuth App),
+//       enable "Device Flow", then paste its Client ID below (looks like "Iv1.xxxxxxxxxxxx"
+//       or "Ov23lixxxxxxxxxxxxxx"). Until then the button shows a setup hint.
+// NOTE: GitHub's device/token endpoints do NOT send CORS headers, so a pure browser
+//       fetch may be blocked unless a CORS proxy is configured below. Set GH_DEVICE_PROXY
+//       to '' to call GitHub directly (works only if the browser allows it / extension).
+const GH_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+const GH_DEVICE_PROXY = ''; // e.g. 'https://corsproxy.io/?' — leave '' for direct call
+let _ghPollTimer = null;
+
+function _ghUrl(u) { return GH_DEVICE_PROXY ? GH_DEVICE_PROXY + encodeURIComponent(u) : u; }
+
+async function ghDeviceLogin() {
+  if (GH_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+    alert('OAuth App Client ID가 설정되지 않았습니다.\n\nhttps://github.com/settings/developers → New OAuth App → Enable Device Flow\n발급된 Client ID를 docs/index.html의 GH_CLIENT_ID에 입력하세요.');
+    return;
+  }
+  try {
+    // Step 1: request device code
+    const r = await fetch(_ghUrl('https://github.com/login/device/code'), {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: GH_CLIENT_ID, scope: 'repo workflow' }),
+    });
+    const data = await r.json();
+    if (!data.device_code) throw new Error(data.error_description || 'device code 발급 실패');
+    showAuthModal(data.user_code, data.verification_uri);
+    pollForToken(data.device_code, data.interval || 5);
+  } catch (e) {
+    alert('Device Flow 오류: ' + e.message + '\n(CORS 차단일 수 있습니다. PAT 입력 방식을 사용하세요.)');
+  }
+}
+
+function showAuthModal(userCode, verificationUri) {
+  document.getElementById('gh-user-code').textContent = userCode || '----';
+  const link = document.getElementById('gh-verify-link');
+  link.dataset.uri = verificationUri || 'https://github.com/login/device';
+  document.getElementById('gh-poll-status').textContent = '인증 대기 중...';
+  document.getElementById('gh-auth-modal').style.display = 'flex';
+}
+
+function closeAuthModal() {
+  document.getElementById('gh-auth-modal').style.display = 'none';
+  if (_ghPollTimer) { clearInterval(_ghPollTimer); _ghPollTimer = null; }
+}
+
+function pollForToken(deviceCode, interval) {
+  if (_ghPollTimer) clearInterval(_ghPollTimer);
+  _ghPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(_ghUrl('https://github.com/login/oauth/access_token'), {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: GH_CLIENT_ID,
+          device_code: deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+      });
+      const data = await r.json();
+      if (data.access_token) {
+        clearInterval(_ghPollTimer); _ghPollTimer = null;
+        // Store under both keys so the existing dashboard (uses wkwave_pat) works unchanged.
+        localStorage.setItem('gh_token', data.access_token);
+        localStorage.setItem('wkwave_pat', data.access_token);
+        pat = data.access_token;
+        closeAuthModal();
+        updateGhUser();
+        boot();
+      } else if (data.error === 'authorization_pending') {
+        document.getElementById('gh-poll-status').textContent = '브라우저에서 승인을 기다리는 중...';
+      } else if (data.error === 'slow_down') {
+        // GitHub asks us to back off; restart poll with longer interval
+        clearInterval(_ghPollTimer); _ghPollTimer = null;
+        pollForToken(deviceCode, (interval || 5) + 5);
+      } else if (data.error) {
+        clearInterval(_ghPollTimer); _ghPollTimer = null;
+        document.getElementById('gh-poll-status').textContent = '오류: ' + (data.error_description || data.error);
+      }
+    } catch (e) {
+      // network/CORS — keep trying a couple cycles, then surface
+      document.getElementById('gh-poll-status').textContent = '폴링 오류: ' + e.message;
+    }
+  }, (interval || 5) * 1000);
+}
+
+async function updateGhUser() {
+  const token = localStorage.getItem('gh_token') || localStorage.getItem('wkwave_pat');
+  const el = document.getElementById('gh-user');
+  if (!el) return;
+  if (!token) { el.innerHTML = ''; return; }
+  try {
+    const r = await fetch('https://api.github.com/user', {
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    });
+    if (!r.ok) { el.innerHTML = ''; return; }
+    const u = await r.json();
+    el.innerHTML = '<img src="' + u.avatar_url + '" style="width:22px;border-radius:50%;vertical-align:middle"> ' +
+      u.login + ' <a href="#" onclick="ghLogout();return false;">로그아웃</a>';
+    const btn = document.getElementById('gh-login-btn');
+    if (btn) btn.style.display = 'none';
+  } catch (e) { el.innerHTML = ''; }
+}
+
+function ghLogout() {
+  localStorage.removeItem('gh_token');
+  localStorage.removeItem('wkwave_pat');
+  location.reload();
 }
 
 // ─── GitHub API ───────────────────────────────────────────────────────────────
@@ -1171,12 +1302,14 @@ setInterval(updateNextCron, 1000);
 function boot() {
   pat = getPAT();
   if (!pat) {
+    updateGhUser();
     document.getElementById('auth-gate').classList.add('show');
     return;
   }
   document.getElementById('auth-gate').classList.remove('show');
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('refresh-bar-wrap').style.display = 'flex';
+  updateGhUser();
   refresh();
 }
 
