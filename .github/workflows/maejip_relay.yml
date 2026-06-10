@@ -60,6 +60,12 @@ jobs:
           cd wkaq
           python scripts/wkwave_daemon.py --market "$MARKET" --run-id "$GITHUB_RUN_ID"
 
+      - name: Self-trigger on error (Recurrence Prevention)
+        if: failure()
+        run: |
+          echo "Daemon exited with an error. Executing auto-heal self-trigger..."
+          gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
+
       - name: Conditional self-chain on stale heartbeat
         if: always()
         run: |
