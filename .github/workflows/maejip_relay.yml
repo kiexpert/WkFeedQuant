@@ -29,7 +29,7 @@ env:
 jobs:
   relay:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 32  # > the 20min relay cron so the old run survives to OVERLAP the new one and hand off cleanly ([>] via _active_run_id) instead of being CANCELLED at the timeout; > the 30min daemon relay-budget so [relay-exit] fires before GHA cancels
 
     steps:
       - name: setup-python
