@@ -49,6 +49,18 @@ jobs:
           mkdir -p ~/.wk-cache/hantoo
           [ -f wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ] && \
             cp wkaq/wavevault/hantoo_cache/hantoo_token_kr.json ~/.wk-cache/hantoo/ || true
+          # Dynamic-load the committed daily token into HANTOO_TOKEN_KR env so
+          # get_token() (which checks that env FIRST) returns it instead of
+          # issuing a NEW token every ~20min relay cycle (was dozens/day; owner
+          # 2026-06-16 permitted the env-var approach -- faster than a per-run
+          # token-cache commit, no merge conflicts). Load ONLY if not expired.
+          TOK=$(python -c "import json,time; d=json.load(open('wkaq/wavevault/hantoo_cache/hantoo_token_kr.json')); print(d.get('access_token','') if time.time() < float(d.get('expires_at',0) or 0) else '')" 2>/dev/null || true)
+          if [ -n "$TOK" ]; then
+            echo "HANTOO_TOKEN_KR=$TOK" >> "$GITHUB_ENV"
+            echo "[token] loaded committed daily token into HANTOO_TOKEN_KR env (no reissue)"
+          else
+            echo "[token] committed token missing/expired -- get_token will fall back"
+          fi
 
       - name: run
         run: |
