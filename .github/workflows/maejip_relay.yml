@@ -9,10 +9,17 @@ on:
 permissions:
   contents: read
 
-# concurrency guard for stale heartbeat self-chain
+# concurrency: newest-wins. cancel-in-progress=true so a fresh run (cron */20,
+# self-chain, or a manual trigger after a code fix) immediately supersedes the
+# current one and runs the LATEST cloned wkwave_daemon code. With false, a HUNG
+# run (stuck past its 30min budget) held the only slot indefinitely and every
+# newer/fixed run queued then got cancelled -> a code fix could never deploy and
+# accumulation froze for 7h+ (2026-06-16). Safe to cancel mid-run because the
+# daemon now pushes signal files every ~5min inside its loop (periodic
+# heartbeat), so a superseded run has already persisted recent data.
 concurrency:
   group: maejip-relay
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   GH_TOKEN:            ${{ secrets.GH_PAT }}
