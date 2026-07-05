@@ -46,8 +46,9 @@ jobs:
       - name: Restore Hantoo token
         run: |
           mkdir -p ~/.wk-cache/hantoo
-          SRC="$WKAQ/wavevault/hantoo_cache/hantoo_token_kr.json"
-          [ -f "$SRC" ] && cp "$SRC" ~/.wk-cache/hantoo/ && echo "[token] restored" || true
+          for f in "$WKAQ"/wavevault/hantoo_cache/hantoo_token_kr*.json "$WKAQ"/wavevault/hantoo_cache/hantoo_token_us*.json; do
+            [ -f "$f" ] && cp "$f" ~/.wk-cache/hantoo/ && echo "[token] restored $(basename "$f")"
+          done
 
       - name: Collect market data (indices, FeedQuant cache)
         continue-on-error: true
@@ -70,19 +71,16 @@ jobs:
       - name: 🔑 Save Hantoo token cache
         if: always()
         run: |
-          SRC=~/.wk-cache/hantoo/hantoo_token_kr.json
-          DEST="$WKAQ/wavevault/hantoo_cache/hantoo_token_kr.json"
-          if [ -f "$SRC" ]; then
-            cp "$SRC" "$DEST"
-            echo "[token-kr-saved] hantoo_token_kr.json"
-          fi
+          for f in ~/.wk-cache/hantoo/hantoo_token_kr*.json ~/.wk-cache/hantoo/hantoo_token_us*.json; do
+            [ -f "$f" ] && cp "$f" "$WKAQ/wavevault/hantoo_cache/" && echo "[token-saved] $(basename "$f")"
+          done
 
       - name: Commit & push results to WkAutoQuant
         run: |
           cd $WKAQ
           git config user.name  "WkAutoQuant Bot"
           git config user.email "bot@wkautoquant.local"
-          git add market_data/ wavevault/naver_signals/ wavevault/hantoo_cache/hantoo_token_kr.json 2>/dev/null || true
+          git add market_data/ wavevault/naver_signals/ wavevault/hantoo_cache/hantoo_token_kr*.json wavevault/hantoo_cache/hantoo_token_us*.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "📡 news+market $(date -u +%Y%m%d_%H%M) [skip ci]"
             git pull --rebase --autostash origin main --quiet 2>/dev/null || true
