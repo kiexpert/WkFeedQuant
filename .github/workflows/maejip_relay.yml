@@ -78,6 +78,24 @@ jobs:
           cd wkaq
           python scripts/wkwave_daemon.py --market "$MARKET" --run-id "$GITHUB_RUN_ID"
 
+      - name: 🔑 Save Hantoo token cache
+        if: always()
+        run: |
+          SRC=~/.wk-cache/hantoo/hantoo_token_kr.json
+          DEST=wkaq/wavevault/hantoo_cache/hantoo_token_kr.json
+          if [ -f "$SRC" ]; then
+            cp "$SRC" "$DEST"
+            cd wkaq
+            git config user.name  "WkAutoQuant Bot"
+            git config user.email "bot@wkautoquant.local"
+            git add wavevault/hantoo_cache/hantoo_token_kr.json 2>/dev/null || true
+            if ! git diff --cached --quiet; then
+              git commit -m "relay: hantoo token cache [skip ci]"
+              git pull --rebase --autostash origin main --quiet 2>/dev/null || true
+              git push origin HEAD:main && echo "[token-kr-saved] pushed" || echo "[token-kr-saved] push failed (non-fatal)"
+            fi
+          fi
+
       - name: Self-trigger on error (Recurrence Prevention)
         if: failure()
         run: |
