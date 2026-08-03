@@ -9,17 +9,21 @@ on:
 permissions:
   contents: read
 
-# concurrency: newest-wins. cancel-in-progress=true so a fresh run (cron */20,
-# self-chain, or a manual trigger after a code fix) immediately supersedes the
-# current one and runs the LATEST cloned wkwave_daemon code. With false, a HUNG
-# run (stuck past its 30min budget) held the only slot indefinitely and every
-# newer/fixed run queued then got cancelled -> a code fix could never deploy and
-# accumulation froze for 7h+ (2026-06-16). Safe to cancel mid-run because the
-# daemon now pushes signal files every ~5min inside its loop (periodic
-# heartbeat), so a superseded run has already persisted recent data.
-concurrency:
-  group: maejip-relay
-  cancel-in-progress: true
+# NO concurrency block (2026-08-03, restored to the original design intent per
+# cross-repo-gha-relay-pattern-public-feeder-drives-private-strategy step 6: "no
+# concurrency group"). The scalper now has real baton-touch handoff (ported from
+# wkwave_daemon.py's _claim/_active_run_id): a new run claims ownership via a GH
+# Variable only AFTER its own setup completes, and the OLD run detects the
+# supersession on its next tick and exits gracefully -- so overlapping runs are
+# the intended coverage mechanism, not a race to prevent. A GHA concurrency group
+# with cancel-in-progress=true would forcibly kill the old run the INSTANT a new
+# one is queued (not once the new one is actually ready), which is worse than no
+# group at all: it can kill a scalper process mid order-submission. The historical
+# reason cancel-in-progress=true was added (2026-06-16: an unbounded hung daemon
+# blocked every future run indefinitely) no longer applies -- the scalper is now
+# hard-bounded (--loops 228 self-terminates at 19min) and the job itself has
+# timeout-minutes: 32 as a backstop, so a stuck run can block at most 32 minutes,
+# never indefinitely.
 
 env:
   GH_TOKEN:            ${{ secrets.GH_PAT }}
@@ -87,7 +91,9 @@ jobs:
           # --loops 228 --interval 5 = 1140s (19min), finishing with a buffer before the
           # next */20 cron tick and under the 32min job timeout. --execute is required or
           # decide_actions' closeout branch is gated off by cfg.dry_run.
-          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 228 --interval 5 --execute || true
+          # --run-id wires the GHA-only baton-touch handoff (GITHUB_ACTIONS-gated in the
+          # scalper itself; a local run never passes --run-id and never touches this).
+          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 228 --interval 5 --run-id "$GITHUB_RUN_ID" --execute || true
 
       - name: 🔑 Save Hantoo token cache
         if: always()
