@@ -80,26 +80,20 @@ jobs:
           else echo '.'; exit 0; fi
           cd wkaq
           # SCALPER-ONLY RELAY (2026-08-03): wkwave_daemon.py (the accumulation/signal
-          # screener) removed from this step per owner directive -- it is no longer in use,
-          # and running it after the scalper drowned the scalper's own log lines in
-          # unrelated screener chart-fetch failures ([hantoo-loader]/[memo-cache] tags,
-          # scripts/feedquant.py), making it impossible to see the scalper's own behavior.
-          # LOOP-COUNT EMERGENCY FIX (2026-08-03, owner directive): --loops 40 was sized for
-          # the WORST-CASE ~22s/tick pacing seen during a buy-retry-storm caused by the (now
-          # fixed) stale-account bug. Once the account fix landed, buy attempts stopped
-          # retry-storming and "no action" ticks run much faster, so --loops 40 finished in
-          # only ~5-6 minutes and self-terminated, leaving a coverage gap before the next
-          # */20 cron tick. FIX: --loops 9999 (effectively unbounded) so the process runs
-          # until EITHER genuinely superseded by baton-touch handoff OR the job's own
-          # timeout-minutes: 32 hard-kills it -- no more loop-count-driven early exit.
-          # INTERVAL FIX (2026-08-03, owner directive): --interval 5 was inconsistent with
-          # the local desktop daemon's --interval 1 -- owner's design intent is the tick rate
-          # should be bound ONLY by Hantoo's own query latency/rate limit (EGW00215), not by
-          # an additional artificial sleep on top. Matched to --interval 1 like the local run.
+          # screener) removed from this step per owner directive -- it is no longer in use.
+          # LOOP-COUNT / INTERVAL CLI ARGS REMOVED (2026-08-03, owner directive): after two
+          # separate incidents caused by this workflow passing wrong --loops/--interval
+          # values (a worst-case-sized --loops that created coverage gaps, and an
+          # --interval mismatched from the local desktop daemon), the owner ordered the
+          # CLI arguments deleted entirely from willkim_realtime_scalper.py and hardcoded
+          # as constants (loop forever unless --once, 1.0s tick interval) so a workflow
+          # YAML can never again silently override them with a wrong value. This step is
+          # updated in the SAME wave as that source change so the two never land out of
+          # sync -- passing the now-removed flags would crash with "unrecognized arguments".
           # --execute is required or decide_actions' closeout branch is gated off by
           # cfg.dry_run. --run-id wires the GHA-only baton-touch handoff (GITHUB_ACTIONS-gated
           # in the scalper itself; a local run never passes --run-id and never touches this).
-          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 9999 --interval 1 --run-id "$GITHUB_RUN_ID" --execute || true
+          python scripts/willkim_realtime_scalper.py --market "$MARKET" --run-id "$GITHUB_RUN_ID" --execute || true
 
       - name: 🔑 Save Hantoo token cache
         if: always()
