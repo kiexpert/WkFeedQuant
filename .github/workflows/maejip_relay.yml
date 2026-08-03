@@ -81,6 +81,7 @@ jobs:
           if   [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ];  then MARKET=KR
           elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then MARKET=US
           else echo '.'; exit 0; fi
+          echo "MARKET=$MARKET" >> "$GITHUB_ENV"
           cd wkaq
           # SCALPER-ONLY RELAY (2026-08-03): wkwave_daemon.py (the accumulation/signal
           # screener) removed from this step per owner directive -- it is no longer in use.
@@ -156,5 +157,20 @@ jobs:
             sleep "$REMAINING"
           else
             echo "elapsed=${ELAPSED}s already >= 20min, self-chaining immediately"
+          fi
+          # BATON CHECK (owner ruling 2026-08-03): only self-chain if THIS run still
+          # owns the baton for the market it served. If a newer run already superseded
+          # it (baton-touch, MAEJIP_ACTIVE_{MARKET}_SCALPER_RUN), that newer run owns
+          # its own self-chain -- firing here too would duplicate the chain and drift
+          # the cadence for no benefit. Checked HERE, after any sleep, so it reflects
+          # the most current state. Skipped entirely if MARKET was never set (should
+          # not happen given the HOUR branches above, but fail open -- self-chain
+          # rather than silently going quiet on an unexpected code path).
+          if [ -n "${MARKET:-}" ]; then
+            ACTIVE=$(gh api "repos/kiexpert/WkFeedQuant/actions/variables/MAEJIP_ACTIVE_${MARKET}_SCALPER_RUN" --jq '.value' 2>/dev/null || echo "")
+            if [ -n "$ACTIVE" ] && [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
+              echo "baton for $MARKET now held by run $ACTIVE (not this run $GITHUB_RUN_ID) -- skip self-chain, the new owner chains itself"
+              exit 0
+            fi
           fi
           gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
