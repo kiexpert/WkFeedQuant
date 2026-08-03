@@ -21,7 +21,7 @@ permissions:
 # group at all: it can kill a scalper process mid order-submission. The historical
 # reason cancel-in-progress=true was added (2026-06-16: an unbounded hung daemon
 # blocked every future run indefinitely) no longer applies -- the scalper is now
-# hard-bounded (--loops 228 self-terminates at 19min) and the job itself has
+# hard-bounded (--loops 40 self-terminates well under 32min) and the job itself has
 # timeout-minutes: 32 as a backstop, so a stuck run can block at most 32 minutes,
 # never indefinitely.
 
@@ -87,13 +87,21 @@ jobs:
           # scripts/feedquant.py), making it impossible to see the scalper's own behavior.
           # Also fixes a real duty-cycle bug: the scalper previously got only ~60s of a
           # ~20min cron cycle (--loops 12 --interval 5) then stopped while the screener ran
-          # alone for the rest of the window. Now the scalper gets the FULL cycle:
-          # --loops 228 --interval 5 = 1140s (19min), finishing with a buffer before the
-          # next */20 cron tick and under the 32min job timeout. --execute is required or
-          # decide_actions' closeout branch is gated off by cfg.dry_run.
-          # --run-id wires the GHA-only baton-touch handoff (GITHUB_ACTIONS-gated in the
-          # scalper itself; a local run never passes --run-id and never touches this).
-          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 228 --interval 5 --run-id "$GITHUB_RUN_ID" --execute || true
+          # alone for the rest of the window.
+          # LOOP-COUNT FIX (2026-08-03, measured live): --loops 228 assumed ~5s/tick
+          # (228*5s=1140s=19min) but real observed pacing across multiple production runs
+          # was ~22s/tick (Hantoo balance-fetch latency dominates), so 228 loops actually
+          # took ~84 minutes and every run hit the 32min job timeout instead of
+          # self-terminating -- confirmed via gh run view showing "exceeded the maximum
+          # execution time of 32m0s" on 3+ consecutive runs, with log timestamps ~22s apart
+          # per [willkim-scalper] tick line. Baton-touch handoff never got a chance to fire
+          # either, since the old process only checks for supersession once per (slow) tick.
+          # FIX: --loops 40 at ~22s/tick totals ~14.7min, safely under both the 20min cron
+          # cadence and the 32min hard timeout, with margin for slower ticks too.
+          # --execute is required or decide_actions' closeout branch is gated off by
+          # cfg.dry_run. --run-id wires the GHA-only baton-touch handoff (GITHUB_ACTIONS-gated
+          # in the scalper itself; a local run never passes --run-id and never touches this).
+          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 40 --interval 5 --run-id "$GITHUB_RUN_ID" --execute || true
 
       - name: 🔑 Save Hantoo token cache
         if: always()
