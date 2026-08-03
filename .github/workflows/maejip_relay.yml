@@ -76,21 +76,18 @@ jobs:
           elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then MARKET=US
           else echo '.'; exit 0; fi
           cd wkaq
-          # CLOSE-OUT WIRING (2026-08-01): willkim_realtime_scalper.py's closeout_flatten
-          # branch (guarded by in_closeout_window) was dead code in production -- this was
-          # the ONLY daemon step this workflow ran, and it never imports or calls the
-          # scalper at all. Runs FIRST, before wkwave_daemon.py, so it always gets a slot
-          # inside this job's budget regardless of how long the accumulation daemon takes
-          # or whether this run gets superseded (concurrency cancel-in-progress=true) before
-          # reaching a later step. --loops/--interval give it ~60s of polling per 20-min
-          # cron tick so a close window landing mid-job still gets caught; --execute is
-          # required or decide_actions' closeout branch is gated off by cfg.dry_run.
-          # RESIDUAL RISK (not fully closed by this change): the cron is */20 and GitHub
-          # schedules can run several minutes late, so a run that starts after a window has
-          # already closed still misses it. See HANDOFF.md / CLAUDE.md Pending for the
-          # follow-up (widen the per-cycle poll specifically during the close hours).
-          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 12 --interval 5 --execute || true
-          python scripts/wkwave_daemon.py --market "$MARKET" --run-id "$GITHUB_RUN_ID"
+          # SCALPER-ONLY RELAY (2026-08-03): wkwave_daemon.py (the accumulation/signal
+          # screener) removed from this step per owner directive -- it is no longer in use,
+          # and running it after the scalper drowned the scalper's own log lines in
+          # unrelated screener chart-fetch failures ([hantoo-loader]/[memo-cache] tags,
+          # scripts/feedquant.py), making it impossible to see the scalper's own behavior.
+          # Also fixes a real duty-cycle bug: the scalper previously got only ~60s of a
+          # ~20min cron cycle (--loops 12 --interval 5) then stopped while the screener ran
+          # alone for the rest of the window. Now the scalper gets the FULL cycle:
+          # --loops 228 --interval 5 = 1140s (19min), finishing with a buffer before the
+          # next */20 cron tick and under the 32min job timeout. --execute is required or
+          # decide_actions' closeout branch is gated off by cfg.dry_run.
+          python scripts/willkim_realtime_scalper.py --market "$MARKET" --loops 228 --interval 5 --execute || true
 
       - name: 🔑 Save Hantoo token cache
         if: always()
