@@ -41,6 +41,9 @@ jobs:
     timeout-minutes: 32  # > the 20min relay cron so the old run survives to OVERLAP the new one and hand off cleanly ([>] via _active_run_id) instead of being CANCELLED at the timeout; > the 30min daemon relay-budget so [relay-exit] fires before GHA cancels
 
     steps:
+      - name: mark start
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: setup-python
         uses: actions/setup-python@v5
         with: { python-version: "3.12" }
@@ -119,37 +122,39 @@ jobs:
           echo "Daemon exited with an error. Executing auto-heal self-trigger..."
           gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
 
-      - name: Conditional self-chain on stale heartbeat
+      - name: Unconditional self-chain (GHA cron delivery is best-effort)
         if: always()
         run: |
-          set -euo pipefail
-          curl -fsSL \
-            https://raw.githubusercontent.com/kiexpert/WkAutoQuant/main/wavevault/daemon_health.json \
-            -o daemon_health.json || {
-              echo "::warning::daemon_health.json unavailable"
-              exit 0
-            }
-          AGE=$(python - <<'PY'
-          import datetime as dt
-          import json
-
-          with open("daemon_health.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
-          last_success = data.get("last_success") or data.get("last_run")
-          if not last_success:
-              print(999999)
-              raise SystemExit
-          ts = dt.datetime.fromisoformat(last_success.replace("Z", "+00:00"))
-          if ts.tzinfo is None:
-              ts = ts.replace(tzinfo=dt.timezone.utc)
-          now = dt.datetime.now(dt.timezone.utc)
-          print(int((now - ts.astimezone(dt.timezone.utc)).total_seconds()))
-          PY
-          )
-          echo "heartbeat age=${AGE}s"
-          if [ "$AGE" -gt 900 ]; then
-            sleep 600
-            gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
+          # REPLACED 2026-08-03 (was "Conditional self-chain on stale heartbeat"):
+          # measured via gh run list that scheduled (event=schedule) runs were
+          # arriving 70-80 minutes apart against a */20 cron -- GitHub's own
+          # known best-effort delay/drop behavior for schedule triggers under
+          # load, not a config bug here. The old step read wavevault/daemon_health.json
+          # for staleness, but that file has been frozen since wkwave_daemon.py
+          # (its only writer) was removed from this relay -- the staleness check
+          # was already dead weight. A conditional check ALSO cannot help when
+          # cron drops the trigger entirely, because it only runs INSIDE an
+          # already-alive job.
+          #
+          # FIX: every run unconditionally re-seeds the NEXT trigger itself,
+          # independent of whether GitHub's own cron actually fires. Safe
+          # because baton-touch (_claim_scalper/_active_scalper_run_id in
+          # willkim_realtime_scalper.py) already makes an overlapping/redundant
+          # run a no-op supersession, never a race.
+          #
+          # PACING: sleep only long enough to round out a ~20min cadence. During
+          # market hours the "run" step above already burns up to 28min (its own
+          # internal wall-clock exit), so REMAINING is already negative and this
+          # dispatches immediately -- no extra GHA-minute cost. During closed-market
+          # hours "run" exits in seconds, so this sleeps out the rest of the 20min
+          # window before dispatching, preserving the original cron-like cadence
+          # and avoiding a tight self-triggering loop that would burn quota.
+          ELAPSED=$(( $(date +%s) - JOB_START ))
+          REMAINING=$(( 1200 - ELAPSED ))
+          if [ "$REMAINING" -gt 0 ]; then
+            echo "elapsed=${ELAPSED}s, sleeping ${REMAINING}s before self-chain"
+            sleep "$REMAINING"
           else
-            echo "heartbeat fresh; skip self-chain"
+            echo "elapsed=${ELAPSED}s already >= 20min, self-chaining immediately"
           fi
+          gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
