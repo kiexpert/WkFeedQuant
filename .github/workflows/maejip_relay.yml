@@ -78,7 +78,22 @@ jobs:
       - name: run
         run: |
           HOUR=$(date -u +%H | sed 's/^0//')
-          if   [ "$HOUR" -ge 0 ] && [ "$HOUR" -le 7 ];  then MARKET=KR
+          # KR WINDOW WIDENED TO INCLUDE 23 UTC (2026-08-06). The KR session is
+          # 09:00-15:30 KST = 00:00-06:30 UTC, so the old "0..7 -> KR" gate could not
+          # start the scalper until the bell had ALREADY rung; combined with the 20min
+          # self-chain cadence below, the first KR run of the day routinely landed
+          # 10-20min after the open and missed the highest-value scalping window.
+          # Worse: at 22 and 23 UTC this else-branch exited in milliseconds, so every
+          # relay cycle across that 2-hour pre-open block did nothing except sleep 20min
+          # in the self-chain step and re-fire -- the "infinite loop on a weird step"
+          # the owner observed 2026-08-06. Booting KR at 23 UTC (08:00 KST) means the
+          # scalper is already warm, already holding the baton, and already looping when
+          # the market opens. Pre-open ticks are harmless: orders outside session hours
+          # are rejected by the broker -- the same property the weekend market-closed
+          # rehearsal in WkAutoQuant CLAUDE.md deliberately relies on.
+          # HOUR is always 0..23, so "-le 7" is exactly the old "0..7" branch; no braces
+          # (a brace-group here needs a trailing ';' before 'then' and is easy to get wrong).
+          if   [ "$HOUR" -eq 23 ] || [ "$HOUR" -le 7 ];  then MARKET=KR
           elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then MARKET=US
           else echo '.'; exit 0; fi
           echo "MARKET=$MARKET" >> "$GITHUB_ENV"
