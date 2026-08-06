@@ -78,24 +78,38 @@ jobs:
       - name: run
         run: |
           HOUR=$(date -u +%H | sed 's/^0//')
-          # KR WINDOW WIDENED TO INCLUDE 23 UTC (2026-08-06). The KR session is
-          # 09:00-15:30 KST = 00:00-06:30 UTC, so the old "0..7 -> KR" gate could not
-          # start the scalper until the bell had ALREADY rung; combined with the 20min
-          # self-chain cadence below, the first KR run of the day routinely landed
-          # 10-20min after the open and missed the highest-value scalping window.
-          # Worse: at 22 and 23 UTC this else-branch exited in milliseconds, so every
-          # relay cycle across that 2-hour pre-open block did nothing except sleep 20min
-          # in the self-chain step and re-fire -- the "infinite loop on a weird step"
-          # the owner observed 2026-08-06. Booting KR at 23 UTC (08:00 KST) means the
-          # scalper is already warm, already holding the baton, and already looping when
-          # the market opens. Pre-open ticks are harmless: orders outside session hours
-          # are rejected by the broker -- the same property the weekend market-closed
-          # rehearsal in WkAutoQuant CLAUDE.md deliberately relies on.
-          # HOUR is always 0..23, so "-le 7" is exactly the old "0..7" branch; no braces
-          # (a brace-group here needs a trailing ';' before 'then' and is easy to get wrong).
-          if   [ "$HOUR" -eq 23 ] || [ "$HOUR" -le 7 ];  then MARKET=KR
-          elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 21 ]; then MARKET=US
-          else echo '.'; exit 0; fi
+          # LOOP-ENTRY TIME GATE REMOVED (2026-08-06, owner directive: "쓸데없는 루프진입
+          # 시간제한 땜빵있으면 제거해주삼"). This block used to carry a THIRD branch --
+          # "else echo '.'; exit 0" -- for the hours matching neither market. That branch
+          # was the bandaid, and it was the whole bug the owner reported as "the feed
+          # daemon is stuck in an infinite loop on a weird step": the run step fell into
+          # it and exited in MILLISECONDS, then the self-chain step below slept out the
+          # rest of its 20min window and re-dispatched, forever. Every cycle in that
+          # window did zero work and only slept. From outside it is indistinguishable
+          # from a hang, but nothing was hung -- there was simply no branch to run.
+          #
+          # There are now only TWO branches and they TILE ALL 24 HOURS, so no hour can
+          # ever fall through to a dead exit again. KR takes 22..23 and 0..7 (07:00-17:00
+          # KST, wrapping the 09:00-15:30 session with pre-open warmup and post-close
+          # settle); US takes 8..21 (17:00-07:00 KST, wrapping the 22:30-05:00 KST
+          # session the same way). The scalper is therefore ALWAYS looping, which is what
+          # WkAutoQuant CLAUDE.md's 365/24 standing mission asks for and what
+          # gha-relay-pattern-t3-security step 2 ("run the relay 7 days a week without a
+          # weekday gate") already specified.
+          #
+          # Safe because out-of-session ticks cannot transact: orders outside market
+          # hours are broker-rejected -- the exact property the weekend market-closed
+          # rehearsal deliberately relies on -- and the scalper's own close-out windows
+          # are separately time-gated (KR 15:17-15:20, US 05:57-06:00 KST). GHA cost does
+          # not rise either: those hours were ALREADY burning a full 20min sleep per
+          # cycle, so this replaces paid idling with paid working, and WkFeedQuant is a
+          # public repo (unlimited free Actions minutes).
+          #
+          # DO NOT reintroduce a "market closed -> exit early" branch here. If the
+          # scalper should be quiet at some hour, that belongs INSIDE the scalper where
+          # it can be tested, not in workflow YAML where it silently becomes a dead zone.
+          if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 7 ]; then MARKET=KR
+          else MARKET=US; fi
           echo "MARKET=$MARKET" >> "$GITHUB_ENV"
           cd wkaq
           # SCALPER-ONLY RELAY (2026-08-03): wkwave_daemon.py (the accumulation/signal
