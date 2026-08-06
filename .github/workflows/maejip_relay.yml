@@ -136,6 +136,35 @@ jobs:
           # in the scalper itself; a local run never passes --run-id and never touches this).
           python scripts/willkim_realtime_scalper.py --market "$MARKET" --run-id "$GITHUB_RUN_ID" --execute || true
 
+      - name: heartbeat
+        if: always()
+        run: |
+          # OPERATOR VISIBILITY (owner 2026-08-06, angry and right). The scalper's stdout is
+          # deliberately silent because this repo is PUBLIC and strategy must not leak, but the
+          # side effect was that a healthy 28-minute run and a hung one look IDENTICAL in the
+          # Actions UI: one echoed command and nothing after. The owner could not check his own
+          # service before the bell, which is exactly when checking is worth most. The designed
+          # channel for this already exists and had been dead since 2026-08-05 -- LAYER 3 of
+          # feedquant-daemon-always-on-strategy specifies wavevault/daemon_health.json, and its
+          # only writer was removed from this relay when wkwave_daemon.py left. The relay writes
+          # it now, so the heartbeat no longer depends on any one script staying in the pipeline.
+          # It lands in WkAutoQuant, which is PRIVATE, so it can carry real detail without the
+          # public-log constraint that muzzles stdout.
+          cd wkaq
+          END_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ELAPSED=$(( $(date +%s) - JOB_START ))
+          printf '{\n  "last_run": "%s",\n  "market": "%s",\n  "run_id": "%s",\n  "elapsed_sec": %s,\n  "run_step_outcome": "%s",\n  "writer": "maejip_relay"\n}\n' \
+            "$END_TS" "${MARKET:-none}" "$GITHUB_RUN_ID" "$ELAPSED" "${JOB_STATUS:-unknown}" > wavevault/daemon_health.json
+          git config user.name  "WkAutoQuant Bot"
+          git config user.email "bot@wkautoquant.local"
+          git add wavevault/daemon_health.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "heartbeat: relay $MARKET run $GITHUB_RUN_ID [skip ci]"
+            git pull --rebase --autostash origin main --quiet 2>/dev/null || true
+            git push origin HEAD:main && echo "[heartbeat] pushed" || echo "[heartbeat] push lost the race (non-fatal)"
+          fi
+          cd ..
+
       - name: 🔑 Save Hantoo token cache
         if: always()
         run: |
