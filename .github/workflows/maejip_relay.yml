@@ -145,7 +145,7 @@ jobs:
           # Actions UI: one echoed command and nothing after. The owner could not check his own
           # service before the bell, which is exactly when checking is worth most. The designed
           # channel for this already exists and had been dead since 2026-08-05 -- LAYER 3 of
-          # feedquant-daemon-always-on-strategy specifies wavevault/daemon_health.json, and its
+          # feedquant-daemon-always-on-strategy specifies wavevault/relay_health.json, and its
           # only writer was removed from this relay when wkwave_daemon.py left. The relay writes
           # it now, so the heartbeat no longer depends on any one script staying in the pipeline.
           # It lands in WkAutoQuant, which is PRIVATE, so it can carry real detail without the
@@ -154,10 +154,10 @@ jobs:
           END_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           ELAPSED=$(( $(date +%s) - JOB_START ))
           printf '{\n  "last_run": "%s",\n  "market": "%s",\n  "run_id": "%s",\n  "elapsed_sec": %s,\n  "run_step_outcome": "%s",\n  "writer": "maejip_relay"\n}\n' \
-            "$END_TS" "${MARKET:-none}" "$GITHUB_RUN_ID" "$ELAPSED" "${JOB_STATUS:-unknown}" > wavevault/daemon_health.json
+            "$END_TS" "${MARKET:-none}" "$GITHUB_RUN_ID" "$ELAPSED" "${JOB_STATUS:-unknown}" > wavevault/relay_health.json
           git config user.name  "WkAutoQuant Bot"
           git config user.email "bot@wkautoquant.local"
-          git add wavevault/daemon_health.json 2>/dev/null || true
+          git add wavevault/relay_health.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "heartbeat: relay $MARKET run $GITHUB_RUN_ID [skip ci]"
             git pull --rebase --autostash origin main --quiet 2>/dev/null || true
@@ -196,7 +196,7 @@ jobs:
           # measured via gh run list that scheduled (event=schedule) runs were
           # arriving 70-80 minutes apart against a */20 cron -- GitHub's own
           # known best-effort delay/drop behavior for schedule triggers under
-          # load, not a config bug here. The old step read wavevault/daemon_health.json
+          # load, not a config bug here. The old step read wavevault/relay_health.json
           # for staleness, but that file has been frozen since wkwave_daemon.py
           # (its only writer) was removed from this relay -- the staleness check
           # was already dead weight. A conditional check ALSO cannot help when
