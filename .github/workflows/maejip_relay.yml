@@ -108,7 +108,15 @@ jobs:
           # DO NOT reintroduce a "market closed -> exit early" branch here. If the
           # scalper should be quiet at some hour, that belongs INSIDE the scalper where
           # it can be tested, not in workflow YAML where it silently becomes a dead zone.
-          if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 7 ]; then MARKET=KR
+          # KR HANDS OVER AT 07 UTC, NOT 08 (owner 2026-08-06). The KR session ends with the
+          # closing auction at 15:30 KST, which is 06:30 UTC. The old boundary kept the KR
+          # scalper alive through 07:59 UTC, so it spent roughly NINETY MINUTES after the bell
+          # running a loop whose every order the broker rejects -- and, worse, it delayed the
+          # US branch by the same ninety minutes. The owner's point: once the closing auction
+          # is past, the KR scalper has nothing left to do, so it should stand down and let the
+          # US daemon come up EARLY where its behaviour can actually be watched before the
+          # 22:30 KST open. Hour granularity makes 07 the first clean cut after the 06:30 close.
+          if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 6 ]; then MARKET=KR
           else MARKET=US; fi
           echo "MARKET=$MARKET" >> "$GITHUB_ENV"
           cd wkaq
