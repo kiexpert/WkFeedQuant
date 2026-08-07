@@ -183,12 +183,18 @@ jobs:
             fi
           fi
 
-      - name: Self-trigger on error (Recurrence Prevention)
-        if: failure()
-        run: |
-          echo "Daemon exited with an error. Executing auto-heal self-trigger..."
-          gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
-
+      # REMOVED 2026-08-07 -- "Self-trigger on error (Recurrence Prevention)", an
+      # if: failure() step that dispatched a successor with NO baton check. The
+      # self-chain below is if: always(), so it ALREADY covers the failure case --
+      # and it checks the baton first. Having both meant a failing run fired TWICE,
+      # two seconds apart, and each successor that also failed fired twice again.
+      # MEASURED 2026-08-07: 2 concurrent runs at 05:11, 2 at 06:03, then SIX inside
+      # three minutes, all cancelled by hand. Six daemons is six order streams on ONE
+      # account. The trigger was the token-cache commit failing on a relay_health.json
+      # merge conflict -- an ordinary failure, amplified into a fork bomb by the
+      # unguarded duplicate. OWNER RULING 2026-08-07: on exit, trigger the feed daemon
+      # ONLY if the baton is still yours; if it has moved, a daemon is already running.
+      # And try exactly ONCE -- no lingering, no retry.
       - name: Unconditional self-chain (GHA cron delivery is best-effort)
         if: always()
         run: |
