@@ -220,29 +220,28 @@ jobs:
           # willkim_realtime_scalper.py) already makes an overlapping/redundant
           # run a no-op supersession, never a race.
           #
-          # PACING: sleep only long enough to round out a ~20min cadence. During
-          # market hours the "run" step above already burns up to 28min (its own
-          # internal wall-clock exit), so REMAINING is already negative and this
-          # dispatches immediately -- no extra GHA-minute cost. During closed-market
-          # hours "run" exits in seconds, so this sleeps out the rest of the 20min
-          # window before dispatching, preserving the original cron-like cadence
-          # and avoiding a tight self-triggering loop that would burn quota.
-          ELAPSED=$(( $(date +%s) - JOB_START ))
-          REMAINING=$(( 1200 - ELAPSED ))
-          if [ "$REMAINING" -gt 0 ]; then
-            echo "elapsed=${ELAPSED}s, sleeping ${REMAINING}s before self-chain"
-            sleep "$REMAINING"
-          else
-            echo "elapsed=${ELAPSED}s already >= 20min, self-chaining immediately"
-          fi
-          # BATON CHECK (owner ruling 2026-08-03): only self-chain if THIS run still
-          # owns the baton for the market it served. If a newer run already superseded
-          # it (baton-touch, MAEJIP_ACTIVE_{MARKET}_SCALPER_RUN), that newer run owns
-          # its own self-chain -- firing here too would duplicate the chain and drift
-          # the cadence for no benefit. Checked HERE, after any sleep, so it reflects
-          # the most current state. Skipped entirely if MARKET was never set (should
-          # not happen given the HOUR branches above, but fail open -- self-chain
-          # rather than silently going quiet on an unexpected code path).
+          # NO PACING SLEEP (owner ruling 2026-08-11, replaces the old up-to-20min wait
+          # below this comment in prior versions -- read this before reintroducing one).
+          # THE INCIDENT: on 2026-08-11 a relay run's OWN "run" step detected
+          # "[handoff] superseded, exiting" within 2 seconds -- correct behaviour, a
+          # newer run had already claimed the baton for that market. But the self-chain
+          # step still ran its baton check AFTER a silent sleep of up to ~19 minutes, so
+          # this already-superseded run sat doing nothing, LOOKED hung in the Actions UI
+          # (healthy pacing and a real hang are indistinguishable when both are silent),
+          # and got manually CANCELLED mid-sleep (SIGTERM, exit 143) -- which killed the
+          # self-chain and left the daemon silent until a manual workflow_dispatch
+          # recovered it. THE FIX, both parts owner-directed: (1) BATON CHECK MOVED
+          # FIRST, before any wait, so a superseded run exits in under a second instead
+          # of sitting through a wait it never needed -- the newer active run already
+          # owns the self-chain duty. (2) NO SLEEP AT ALL for the run that IS still
+          # active: "기다릴 필요없소, 어떤 사유든 종료 당했으면 즉시 다음 데몬을 띄워야
+          # 서비스가 복구되는데 누구 좋으라고 기다림?" -- whatever killed coverage, the
+          # next run must exist immediately, not after up to 20 minutes of silence.
+          # Tight-loop risk during closed-market hours (where "run" exits in seconds) is
+          # bounded by the job's own real setup cost -- clone, pip install, token restore
+          # -- which already takes real wall-clock time before this step is even reached,
+          # and WkFeedQuant is a public repo with unlimited free Actions minutes, so GHA
+          # quota was never the actual constraint the old pacing was protecting.
           if [ -n "${MARKET:-}" ]; then
             ACTIVE=$(gh api "repos/kiexpert/WkFeedQuant/actions/variables/MAEJIP_ACTIVE_${MARKET}_SCALPER_RUN" --jq '.value' 2>/dev/null || echo "")
             if [ -n "$ACTIVE" ] && [ "$ACTIVE" != "$GITHUB_RUN_ID" ]; then
@@ -250,4 +249,5 @@ jobs:
               exit 0
             fi
           fi
+          echo "self-chaining immediately -- no pacing wait"
           gh workflow run maejip_relay.yml --repo kiexpert/WkFeedQuant
