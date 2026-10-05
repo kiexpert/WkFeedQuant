@@ -34,6 +34,7 @@ env:
   PYTHONUTF8:          "1"
   PYTHONPATH:          "${{ github.workspace }}/wkaq/scripts"
   MAEJIP_RELAY_MODE:   "1"
+  WK_US_DAYTIME:       ${{ vars.WK_US_DAYTIME }}  # US daytime session switch (empty = OFF); owner 2026-10-05
 
 jobs:
   relay:
@@ -118,6 +119,9 @@ jobs:
           # 22:30 KST open. Hour granularity makes 07 the first clean cut after the 06:30 close.
           if [ "$HOUR" -ge 22 ] || [ "$HOUR" -le 6 ]; then MARKET=KR
           else MARKET=US; fi
+          # KR holiday inside the US daytime window with WK_US_DAYTIME on: relabel BEFORE the baton variable is read,
+          # so the baton the scalper writes (MAEJIP_ACTIVE_<market>_SCALPER_RUN) is the one the self-chain step reads.
+          if [ "$MARKET" = KR ]; then MARKET=$(python -c "import us_daytime; print(us_daytime.relabel_market('KR'))" 2>/dev/null || echo KR); fi
           echo "MARKET=$MARKET" >> "$GITHUB_ENV"
           cd wkaq
           # SCALPER-ONLY RELAY (2026-08-03): wkwave_daemon.py (the accumulation/signal
