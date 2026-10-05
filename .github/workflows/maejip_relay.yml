@@ -36,6 +36,7 @@ env:
   MAEJIP_RELAY_MODE:   "1"
   WK_US_DAYTIME:       ${{ vars.WK_US_DAYTIME }}  # US daytime session switch (empty = OFF); owner 2026-10-05
   WK_AVG_RAMP:         ${{ vars.WK_AVG_RAMP }}  # averaging-down depth ramp switch (empty = OFF); owner 2026-10-05
+  WK_AVG_RAMP_MAX_PCT: ${{ vars.WK_AVG_RAMP_MAX_PCT }}  # deepest averaging-down buffer percent (empty = 10); owner 2026-10-05
 
 jobs:
   relay:
