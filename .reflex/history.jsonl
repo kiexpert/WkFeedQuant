@@ -1,0 +1,1 @@
+{"kind":"prompt","by":"kiexpert","session":"57585ce2-861b-4046-85fa-306b9b24753b","at":"2026-11-04T04:46:39.003Z","prompt":"메모리 셀 1000개가 한 줄로 놓였을 때 가운데 셀이 뜨거워지면 열이 어떻게 퍼지는지 파이썬으로 시뮬레이션하고, 100단계 뒤 평균과 최고 온 ...(+9 chars)","tools":["agent_cmd"],"lessons_used":[],"lessons_liked":[],"lessons_added":[],"lessons_disliked":[],"intent_holds":0,"intent_passed":true}
